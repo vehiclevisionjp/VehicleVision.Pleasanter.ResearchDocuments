@@ -1,0 +1,20 @@
+# Node.js
+node_modules/
+npm-debug.log*
+
+# PDF出力
+pdf-output/
+
+# OS生成ファイル
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ローカル設定
+local.config.json

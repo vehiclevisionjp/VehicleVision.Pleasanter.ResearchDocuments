@@ -1,0 +1,24 @@
+{
+  "name": "vehiclevision-pleasanter-research-documents",
+  "version": "1.0.0",
+  "description": "プリザンター内部実装に関する調査ドキュメント",
+  "private": true,
+  "scripts": {
+    "preinstall:check": "node -e \"const fs=require('fs');if(!fs.existsSync('node_modules')){process.exit(1)}\" || npm install",
+    "lint:md": "npm run preinstall:check && markdownlint-cli2 \"docs/**/*.md\" \"*.md\"",
+    "lint:md:fix": "npm run preinstall:check && markdownlint-cli2 --fix \"docs/**/*.md\" \"*.md\"",
+    "format": "npm run preinstall:check && prettier --write \"docs/**/*.md\" \"*.md\"",
+    "format:check": "npm run preinstall:check && prettier --check \"docs/**/*.md\" \"*.md\"",
+    "toc": "npm run preinstall:check && doctoc docs README.md CONTRIBUTING.md --github --maxlevel 3 --notitle && node docs/script/decode-toc.js",
+    "toc:all": "npm run toc && npm run format",
+    "pdf": "npm run preinstall:check && node docs/script/generate-pdf.js"
+  },
+  "devDependencies": {
+    "doctoc": "^2.2.1",
+    "glob": "^11.0.0",
+    "markdownlint": "^0.40.0",
+    "markdownlint-cli2": "^0.20.0",
+    "md-to-pdf": "^5.2.4",
+    "prettier": "^3.5.0"
+  }
+}

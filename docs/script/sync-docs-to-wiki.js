@@ -212,17 +212,35 @@ function main() {
       GIT_ASKPASS: 'echo',
     };
 
+    let isNewWiki = false;
+
     if (!fs.existsSync(wikiDir)) {
       console.log('📥 Wiki リポジトリをクローン中...\n');
-      execSync(`git clone "${wikiRepoUrl}" "${wikiDir}"`, {
-        stdio: 'inherit',
-        env: gitEnv
-      });
+      try {
+        execSync(`git clone "${wikiRepoUrl}" "${wikiDir}"`, {
+          stdio: 'inherit',
+          env: gitEnv
+        });
+      } catch (cloneError) {
+        // Wikiが初期化されていない場合、新規リポジトリとして作成
+        console.log('⚠️  Wiki リポジトリが存在しません。新規作成します...\n');
+        isNewWiki = true;
+        fs.mkdirSync(wikiDir, { recursive: true });
+        execSync(`cd "${wikiDir}" && git init`, { stdio: 'pipe', env: gitEnv });
+        execSync(`cd "${wikiDir}" && git remote add origin "${wikiRepoUrl}"`, { stdio: 'pipe', env: gitEnv });
+        // masterブランチを作成（GitHub Wikiはmasterを使用）
+        execSync(`cd "${wikiDir}" && git checkout -b master`, { stdio: 'pipe', env: gitEnv });
+      }
     } else {
-      execSync(`cd "${wikiDir}" && git pull origin master`, {
-        stdio: 'pipe',
-        env: gitEnv
-      });
+      try {
+        execSync(`cd "${wikiDir}" && git pull origin master`, {
+          stdio: 'pipe',
+          env: gitEnv
+        });
+      } catch (pullError) {
+        // リモートが空の場合は無視
+        console.log('⚠️  リモートからのpullをスキップしました（空のリポジトリの可能性）');
+      }
     }
 
     // リモートURLを認証付きURLに更新（既存クローン対策）
@@ -242,7 +260,7 @@ function main() {
     });
 
     // Wiki リポジトリから既存のページを取得
-    const wikiPages = getAllWikiPages(wikiDir);
+    const wikiPages = isNewWiki ? [] : getAllWikiPages(wikiDir);
     const docsWikiTitles = new Set(files.map(f => f.wikiTitle));
 
     // 保護対象ページを取得（サイドバーに含めるため）

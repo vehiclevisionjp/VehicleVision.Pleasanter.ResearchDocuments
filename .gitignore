@@ -15,5 +15,12 @@ Thumbs.db
 *.swo
 *~
 
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
 # ローカル設定
 local.config.json

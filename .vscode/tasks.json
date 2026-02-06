@@ -2,6 +2,38 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "npm: setup",
+      "type": "npm",
+      "script": "setup",
+      "problemMatcher": [],
+      "group": "build",
+      "detail": "サブモジュール初期化 + npm install を一括実行"
+    },
+    {
+      "label": "npm: submodule:init",
+      "type": "npm",
+      "script": "submodule:init",
+      "problemMatcher": [],
+      "group": "build",
+      "detail": "サブモジュールを初期化"
+    },
+    {
+      "label": "npm: submodule:update",
+      "type": "npm",
+      "script": "submodule:update",
+      "problemMatcher": [],
+      "group": "build",
+      "detail": "サブモジュールを最新版に更新"
+    },
+    {
+      "label": "npm: submodule:status",
+      "type": "npm",
+      "script": "submodule:status",
+      "problemMatcher": [],
+      "group": "build",
+      "detail": "サブモジュールの状態を確認"
+    },
+    {
       "label": "npm: lint:md",
       "type": "npm",
       "script": "lint:md",

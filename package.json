@@ -5,6 +5,10 @@
   "private": true,
   "scripts": {
     "preinstall:check": "node -e \"const fs=require('fs');if(!fs.existsSync('node_modules')){process.exit(1)}\" || npm install",
+    "submodule:init": "git submodule update --init --recursive",
+    "submodule:update": "git submodule update --remote --merge",
+    "submodule:status": "git submodule status",
+    "setup": "npm run submodule:init && npm install",
     "lint:md": "npm run preinstall:check && markdownlint-cli2 \"docs/**/*.md\" \"*.md\"",
     "lint:md:fix": "npm run preinstall:check && markdownlint-cli2 --fix \"docs/**/*.md\" \"*.md\"",
     "format": "npm run preinstall:check && prettier --write \"docs/**/*.md\" \"*.md\"",

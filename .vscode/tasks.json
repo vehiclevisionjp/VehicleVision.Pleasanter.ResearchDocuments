@@ -1,0 +1,64 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: lint:md",
+      "type": "npm",
+      "script": "lint:md",
+      "problemMatcher": [],
+      "group": "test",
+      "detail": "Markdownファイルの構文チェック"
+    },
+    {
+      "label": "npm: lint:md:fix",
+      "type": "npm",
+      "script": "lint:md:fix",
+      "problemMatcher": [],
+      "group": "test",
+      "detail": "Markdownのlintエラーを自動修正"
+    },
+    {
+      "label": "npm: format",
+      "type": "npm",
+      "script": "format",
+      "problemMatcher": [],
+      "group": "test",
+      "detail": "Prettierでファイルをフォーマット"
+    },
+    {
+      "label": "npm: format:check",
+      "type": "npm",
+      "script": "format:check",
+      "problemMatcher": [],
+      "group": "test",
+      "detail": "フォーマットのチェック（変更なし）"
+    },
+    {
+      "label": "npm: toc",
+      "type": "npm",
+      "script": "toc",
+      "problemMatcher": [],
+      "group": "test",
+      "detail": "doctocでTOCを一括更新"
+    },
+    {
+      "label": "npm: toc:all",
+      "type": "npm",
+      "script": "toc:all",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "TOC更新 + フォーマットを一括実行"
+    },
+    {
+      "label": "npm: pdf",
+      "type": "npm",
+      "script": "pdf",
+      "problemMatcher": [],
+      "group": "test",
+      "detail": "全MarkdownファイルをPDFに変換"
+    }
+  ]
+}

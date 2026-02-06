@@ -25,6 +25,7 @@
 | [pleasanter-session-api-retention.md](pleasanter-session-api-retention.md) | Sessions API のセッション有効期間調査             | 2026-02-03 |
 | [pleasanter-site-setting-history.md](pleasanter-site-setting-history.md)   | SiteSetting 更新時の変更履歴記録調査              | 2026-02-03 |
 | [pleasanter-session-management.md](pleasanter-session-management.md)       | Session 管理の実装調査（CRUD・KVS拡張性）         | 2026-02-06 |
+| [pleasanter-extendedsql-dblink.md](pleasanter-extendedsql-dblink.md)       | 拡張SQL 実行権限・DBリンク調査                    | 2026-02-06 |
 
 ## 注意事項
 

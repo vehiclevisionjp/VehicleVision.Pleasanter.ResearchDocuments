@@ -5,17 +5,16 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-- [VehicleVision.Pleasanter.ResearchDocuments](#vehiclevisionpleasanterresearchdocuments)
-  - [目的](#目的)
-  - [ドキュメント構成](#ドキュメント構成)
-  - [使い方](#使い方)
+- [目的](#目的)
+- [ドキュメント構成](#ドキュメント構成)
+- [使い方](#使い方)
     - [初期セットアップ](#初期セットアップ)
     - [サブモジュール管理](#サブモジュール管理)
     - [目次の更新](#目次の更新)
     - [Markdownの構文チェック](#markdownの構文チェック)
     - [PDF生成](#pdf生成)
-  - [関連リポジトリ](#関連リポジトリ)
-  - [ライセンス](#ライセンス)
+- [関連リポジトリ](#関連リポジトリ)
+- [ライセンス](#ライセンス)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 

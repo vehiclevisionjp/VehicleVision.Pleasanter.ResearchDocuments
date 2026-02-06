@@ -13,7 +13,7 @@
     "lint:md:fix": "npm run preinstall:check && markdownlint-cli2 --fix \"docs/**/*.md\" \"*.md\"",
     "format": "npm run preinstall:check && prettier --write \"docs/**/*.md\" \"*.md\"",
     "format:check": "npm run preinstall:check && prettier --check \"docs/**/*.md\" \"*.md\"",
-    "toc": "npm run preinstall:check && doctoc docs README.md CONTRIBUTING.md --github --maxlevel 3 --notitle && node docs/script/decode-toc.js",
+    "toc": "npm run preinstall:check && doctoc docs README.md --github --maxlevel 3 --notitle && node docs/script/decode-toc.js",
     "toc:all": "npm run toc && npm run format",
     "pdf": "npm run preinstall:check && node docs/script/generate-pdf.js"
   },

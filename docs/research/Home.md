@@ -28,6 +28,8 @@
 | [pleasanter-extendedsql-dblink.md](pleasanter-extendedsql-dblink.md)                                 | 拡張SQL 実行権限・DBリンク調査                      | 2026-02-06 |
 | [pleasanter-sections-serverscript-autopostback.md](pleasanter-sections-serverscript-autopostback.md) | Sections サーバースクリプト AutoPostBack 動作調査   | 2026-02-10 |
 | [pleasanter-codedefiner-database-management.md](pleasanter-codedefiner-database-management.md)       | CodeDefiner DB作成・更新ロジックとRDBMS差違吸収調査 | 2026-02-10 |
+| [pleasanter-user-access-control.md](pleasanter-user-access-control.md)                               | ユーザアクセス権限・アクセス制御 実装調査           | 2026-02-10 |
+| [pleasanter-permission-hierarchy.md](pleasanter-permission-hierarchy.md)                             | 権限階層構造（User・Group・Dept）調査               | 2026-02-10 |
 
 ## 注意事項
 

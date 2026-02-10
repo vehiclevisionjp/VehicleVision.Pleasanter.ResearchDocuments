@@ -19,14 +19,15 @@
 
 ## ドキュメント一覧
 
-| ドキュメント                                                                                         | 説明                                              | 調査日     |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---------- |
-| [pleasanter-upsert-implementation.md](pleasanter-upsert-implementation.md)                           | Upsert API の実装調査（レースコンディション問題） | 2026-02-03 |
-| [pleasanter-session-api-retention.md](pleasanter-session-api-retention.md)                           | Sessions API のセッション有効期間調査             | 2026-02-03 |
-| [pleasanter-site-setting-history.md](pleasanter-site-setting-history.md)                             | SiteSetting 更新時の変更履歴記録調査              | 2026-02-03 |
-| [pleasanter-session-management.md](pleasanter-session-management.md)                                 | Session 管理の実装調査（CRUD・KVS拡張性）         | 2026-02-06 |
-| [pleasanter-extendedsql-dblink.md](pleasanter-extendedsql-dblink.md)                                 | 拡張SQL 実行権限・DBリンク調査                    | 2026-02-06 |
-| [pleasanter-sections-serverscript-autopostback.md](pleasanter-sections-serverscript-autopostback.md) | Sections サーバースクリプト AutoPostBack 動作調査 | 2026-02-10 |
+| ドキュメント                                                                                         | 説明                                                | 調査日     |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------- |
+| [pleasanter-upsert-implementation.md](pleasanter-upsert-implementation.md)                           | Upsert API の実装調査（レースコンディション問題）   | 2026-02-03 |
+| [pleasanter-session-api-retention.md](pleasanter-session-api-retention.md)                           | Sessions API のセッション有効期間調査               | 2026-02-03 |
+| [pleasanter-site-setting-history.md](pleasanter-site-setting-history.md)                             | SiteSetting 更新時の変更履歴記録調査                | 2026-02-03 |
+| [pleasanter-session-management.md](pleasanter-session-management.md)                                 | Session 管理の実装調査（CRUD・KVS拡張性）           | 2026-02-06 |
+| [pleasanter-extendedsql-dblink.md](pleasanter-extendedsql-dblink.md)                                 | 拡張SQL 実行権限・DBリンク調査                      | 2026-02-06 |
+| [pleasanter-sections-serverscript-autopostback.md](pleasanter-sections-serverscript-autopostback.md) | Sections サーバースクリプト AutoPostBack 動作調査   | 2026-02-10 |
+| [pleasanter-codedefiner-database-management.md](pleasanter-codedefiner-database-management.md)       | CodeDefiner DB作成・更新ロジックとRDBMS差違吸収調査 | 2026-02-10 |
 
 ## 注意事項
 

@@ -192,7 +192,7 @@ Sessionsテーブルのスキーマ：
 
 Redisでのデータ構造：
 
-```
+```text
 Key: {SessionGuid}
 Type: Hash
 Fields:
@@ -249,7 +249,7 @@ flowchart LR
 
 1. **Page識別の差異**
 
-    ```
+    ```text
     RDB:   Key=ViewMode, Page=Items/100  → 別レコード
     Redis: HashField=ViewMode_Items/100  → アンダースコア結合
     ```
@@ -258,7 +258,7 @@ flowchart LR
 
 2. **ReadOnce管理の差異**
 
-    ```
+    ```text
     RDB:   同一レコード内でReadOnce=true/false管理
     Redis: 別キー（"_readOnce"サフィックス）で管理
     ```
@@ -1403,9 +1403,9 @@ else
 
 #### 具体的なリスクシナリオ
 
-**シナリオ1: 排他制御の古いロック参照**
+##### シナリオ1: 排他制御の古いロック参照
 
-```
+```text
 1. ユーザーAがテーブル更新開始（ロック取得）
 2. SessionExclusive.Lock() でRedisにロック情報保存
 3. 更新完了、SessionExclusive.Clear() でRDBからロック削除
@@ -1416,9 +1416,9 @@ else
 **発生確率:** 低（通常は新しいデータで上書きされる）
 **影響度:** 低（ロック取得ロジックにより回避される）
 
-**シナリオ2: 一時ファイルセッションの蓄積**
+##### シナリオ2: 一時ファイルセッションの蓄積
 
-```
+```text
 1. 大量のファイルアップロード処理
 2. 各処理でTempFileセッション作成
 3. 処理完了時、RDBからは削除されるがRedisには残留
@@ -1428,9 +1428,9 @@ else
 **発生確率:** 中（ファイルアップロードが頻繁な環境で発生）
 **影響度:** 低（メモリ使用量の微増のみ）
 
-**シナリオ3: RDB/Redis不整合によるトラブルシュート困難**
+##### シナリオ3: RDB/Redis不整合によるトラブルシュート困難
 
-```
+```text
 1. 障害発生時、RDBとRedisの状態を比較
 2. 削除されたはずのセッションがRedisに存在
 3. どちらが正しい状態か判断が困難
@@ -1559,7 +1559,7 @@ public static void Remove(Context context, string key, bool page, string session
 
 **動作説明:**
 
-```
+```text
 Before Remove:
   Redis Key: abc123def456
   TTL: 1200分残り

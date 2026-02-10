@@ -21,6 +21,27 @@ CodeDefiner がデータベースを作成・更新する処理フローと、RD
     - [SQL方言の差異（ISqls）](#sql方言の差異isqls)
 - [接続方式と権限レベル](#接続方式と権限レベル)
 - [マイグレーションチェックモード](#マイグレーションチェックモード)
+- [テーブルの追加・削除に関するロジック](#テーブルの追加削除に関するロジック)
+    - [処理対象テーブル一覧の決定](#処理対象テーブル一覧の決定)
+    - [テーブルの新規追加](#テーブルの新規追加)
+    - [テーブルの削除（未実装）](#テーブルの削除未実装)
+    - [テーブルバリエーションの生成](#テーブルバリエーションの生成)
+    - [Quartz テーブルの条件付きスキップ](#quartz-テーブルの条件付きスキップ)
+- [テーブル構造変更の判断ロジック](#テーブル構造変更の判断ロジック)
+    - [全体の判断フロー](#全体の判断フロー)
+    - [HasChanges の判定構造](#haschanges-の判定構造)
+    - [(1) カラム数の比較](#1-カラム数の比較)
+    - [(2) カラム属性の比較（Columns.HasChanges）](#2-カラム属性の比較columnshaschanges)
+    - [(3) デフォルト値制約の比較（Constraints.HasChanges）](#3-デフォルト値制約の比較constraintshaschanges)
+    - [(4) インデックス構成の比較（Indexes.HasChanges）](#4-インデックス構成の比較indexeshaschanges)
+    - [カラムフィルタリング条件](#カラムフィルタリング条件)
+    - [マイグレーションの実行方式](#マイグレーションの実行方式)
+- [テーブル定義ファイル（Definition_Column）](#テーブル定義ファイルdefinition_column)
+    - [格納場所](#格納場所)
+    - [ファイル命名規則](#ファイル命名規則)
+    - [テーブル一覧と定義ファイル数](#テーブル一覧と定義ファイル数)
+    - [JSON ファイルの構造](#json-ファイルの構造)
+    - [読み込みの仕組み](#読み込みの仕組み)
 - [結論](#結論)
 - [関連ソースコード](#関連ソースコード)
 
@@ -418,6 +439,349 @@ CodeDefiner は2種類の接続を使い分ける。
 
 ---
 
+## テーブルの追加・削除に関するロジック
+
+### 処理対象テーブル一覧の決定
+
+CodeDefiner が管理するテーブル一覧はハードコーディングされておらず、
+`Def.TableNameCollection()` によりカラム定義ファイルから動的に導出される。
+
+**ファイル**: `Implem.DefinitionAccessor/Def.cs`
+
+```csharp
+public static IEnumerable<string> TableNameCollection(...)
+{
+    return ColumnDefinitionCollection
+        .Where(o => !o.ModelName.StartsWith("_Base"))  // ベース定義を除外
+        .OrderBy(o => o["No"])
+        .Select(o => o.TableName)
+        .Distinct();  // テーブル名の重複排除
+}
+```
+
+つまり、`Definition_Column/` に `{テーブル名}_{カラム名}.json` を
+追加すれば新テーブルが自動的に管理対象となり、
+削除すればテーブルが管理対象から外れる
+（ただし実DBからの削除は行われない — 後述）。
+
+### テーブルの新規追加
+
+`ConfigureTablePart()` で `Tables.Exists()` が `false` を返した場合、
+`Tables.CreateTable()` が呼び出されてテーブルが新規作成される。
+
+```mermaid
+flowchart TD
+    A["TablesConfigurator.Configure()"] --> B["Def.TableNameCollection()<br/>定義ファイルからテーブル一覧を取得"]
+    B --> C["テーブル毎に ConfigureTableSet()"]
+    C --> D{"Tables.Exists()?<br/>実DBにテーブルが存在する?"}
+    D -->|No| E["Tables.CreateTable()<br/>テーブル新規作成"]
+    D -->|Yes| F["HasChanges 判定へ"]
+```
+
+新規テーブル追加時に必要なのは定義ファイルの配置のみであり、
+CodeDefiner 側のコード変更は不要である。
+
+### テーブルの削除（未実装）
+
+CodeDefiner には**テーブルを削除するロジックが存在しない**。
+定義ファイルからテーブル定義を削除しても、
+`TableNameCollection()` から除外されるだけで、
+実DB上のテーブルは残り続ける。
+
+`DROP TABLE` に相当する SQL テンプレートも存在しない。
+
+同様に、マイグレーション時の旧テーブルも削除されない。
+旧テーブルは `_Migrated_{datetime}_{テーブル名}` にリネームされ、
+DB上に保持される。
+
+| RDBMS      | リネーム方法                                    |
+| ---------- | ----------------------------------------------- |
+| SQL Server | `sp_rename N'{旧}', N'_Migrated_{新}'`          |
+| PostgreSQL | `ALTER TABLE "{旧}" RENAME TO "_Migrated_{新}"` |
+| MySQL      | `ALTER TABLE "{旧}" RENAME TO "_Migrated_{新}"` |
+
+### テーブルバリエーションの生成
+
+1つの定義テーブルに対して、最大3種類の物理テーブルが作成される。
+
+**ファイル**: `Functions/Rds/TablesConfigurator.cs`（`ConfigureTableSet`）
+
+| バリエーション         | 物理テーブル名         | 作成条件                         |
+| ---------------------- | ---------------------- | -------------------------------- |
+| 通常テーブル           | `{テーブル名}`         | 常に作成                         |
+| 削除レコード用テーブル | `{テーブル名}_deleted` | `History > 0` のカラムがある場合 |
+| 履歴テーブル           | `{テーブル名}_history` | `History > 0` のカラムがある場合 |
+
+`_deleted` テーブルには通常テーブルと同じカラム構成が使用される。
+`_history` テーブルには `History > 0` のカラムのみが使用され、
+`History` プロパティの値順にソートされる。
+
+`_history` / `_deleted` テーブルでは IDENTITY 属性が付与されない
+（`noIdentity: true`）。
+
+### Quartz テーブルの条件付きスキップ
+
+Quartz.NET のスケジューラ用テーブル（`QRTZ_*`）は、
+クラスタリング設定に基づいて作成がスキップされる。
+
+**ファイル**: `Functions/Rds/TablesConfigurator.cs`
+
+```csharp
+private static bool IsSkipQuartzTable(string tableName)
+{
+    var enableClustering =
+        Parameters.Quartz?.Clustering?.Enabled ?? false;
+    return !enableClustering && Tables.IsQuartzTable(tableName);
+}
+```
+
+| 条件                                      | 動作                      |
+| ----------------------------------------- | ------------------------- |
+| `Quartz.Clustering.Enabled == true`       | Quartz テーブルを作成     |
+| `Quartz.Clustering.Enabled == false/null` | Quartz テーブルをスキップ |
+
+また、PostgreSQL では Quartz テーブルのテーブル名・カラム名が
+小文字に正規化される（`NormalizeTableName` / `ColumnName.ToLower()`）。
+
+---
+
+## テーブル構造変更の判断ロジック
+
+### 全体の判断フロー
+
+`ConfigureTablePart()` がテーブル単位の作成・更新を判断する。
+テーブルは `{テーブル名}` / `{テーブル名}_deleted` / `{テーブル名}_history`
+の最大3種類のバリエーションに対してそれぞれ判定される。
+
+**ファイル**: `Functions/Rds/TablesConfigurator.cs`
+
+```mermaid
+flowchart TD
+    A["ConfigureTablePart()"] --> B{"Tables.Exists()?"}
+    B -->|No| C["Tables.CreateTable()<br/>テーブル新規作成"]
+    B -->|Yes| D{"Tables.HasChanges()?"}
+    D -->|No| E["変更なし → スキップ"]
+    D -->|Yes| F["Tables.MigrateTable()<br/>マイグレーション実行"]
+```
+
+### HasChanges の判定構造
+
+`Tables.HasChanges()` は以下の4種類のチェックを順に行い、
+いずれか1つでも差異があれば `true`（要マイグレーション）と判定する。
+
+**ファイル**: `Functions/Rds/Parts/Tables.cs`
+
+```mermaid
+flowchart TD
+    A["Tables.HasChanges()"] --> B{"(1) カラム数の比較<br/>定義と実DBのカラム数が異なる?"}
+    B -->|Yes| Z["true → 要マイグレーション"]
+    B -->|No| C{"(2) Columns.HasChanges()<br/>各カラムの属性が異なる?"}
+    C -->|Yes| Z
+    C -->|No| D{"(3) Constraints.HasChanges()<br/>デフォルト値制約が異なる?"}
+    D -->|Yes| Z
+    D -->|No| E{"(4) Indexes.HasChanges()<br/>インデックス構成が異なる?"}
+    E -->|Yes| Z
+    E -->|No| F["false → 変更なし"]
+```
+
+### (1) カラム数の比較
+
+最も軽量なチェック。定義ファイル上のカラム数と
+実DBから取得したカラム数を単純比較する。
+
+```csharp
+// Tables.cs
+private static bool HasChanges(
+    IEnumerable<ColumnDefinition> columnDefinitionCollection,
+    EnumerableRowCollection<DataRow> rdsColumnCollection)
+{
+    return rdsColumnCollection.Count() != columnDefinitionCollection.Count();
+}
+```
+
+カラムの追加・削除がある場合、この時点で即座にマイグレーション対象となる。
+
+### (2) カラム属性の比較（Columns.HasChanges）
+
+各カラムを定義順に1つずつ比較し、以下の属性をチェックする。
+
+**ファイル**: `Functions/Rds/Parts/Columns.cs`
+
+| チェック項目 | 比較内容                                                   |
+| ------------ | ---------------------------------------------------------- |
+| カラム名     | `rdsColumn["ColumnName"]` vs `columnDefinition.ColumnName` |
+| データ型     | `ConvertBack(rdsColumn["TypeName"])` vs `TypeName`         |
+| カラムサイズ | 型に応じた詳細比較（後述）                                 |
+| NULL許可     | `rdsColumn["is_nullable"]` vs `Nullable`                   |
+| IDENTITY属性 | `rdsColumn["is_identity"]` vs `Identity`                   |
+
+**IDENTITY属性の例外**: `_history` / `_deleted` テーブルでは
+IDENTITY チェックをスキップする
+（これらのテーブルでは IDENTITY を付与しないため）。
+
+**データ型の比較**: `ISqlDataType.ConvertBack()` により、
+実DBの型名を定義ファイルの SQL Server 基準の型名に逆変換してから比較する。
+これにより RDBMS 間の型名の差異を吸収している。
+
+#### カラムサイズの比較
+
+カラムサイズの判定は RDBMS によってロジックが異なる。
+
+**SQL Server / PostgreSQL**（`ColumnSize.HasChanges`）:
+
+| データ型            | 比較方法                                                             |
+| ------------------- | -------------------------------------------------------------------- |
+| `char`, `varchar`   | `max_length` vs `MaxLength × 1`                                      |
+| `nchar`, `nvarchar` | `max_length` vs `MaxLength × NationalCharacterStoredSizeCoefficient` |
+| `decimal`           | `Size` 文字列の完全一致（例: `"18,4"`）                              |
+| その他              | サイズ比較なし（常に `false`）                                       |
+
+`MaxLength == -1`（max指定）の場合、
+実DB側も `-1` であれば変更なしと判定する。
+
+`NationalCharacterStoredSizeCoefficient` は
+SQL Server では `2`、PostgreSQL では `4` が設定されている。
+
+**MySQL**（`MySqlColumnSize.HasChanges`）:
+
+MySQL では `nvarchar` の扱いが特殊で、
+`MaxLength` の値に応じて以下のように判定が分岐する。
+
+| 条件                  | 期待されるDB上の型              | 判定基準                 |
+| --------------------- | ------------------------------- | ------------------------ |
+| `MaxLength == -1`     | `longtext`                      | `TypeName != "longtext"` |
+| `MaxLength < 1024`    | `varchar(MaxLength × 係数)`     | 通常のサイズ比較         |
+| `NeedReduceByDefault` | `varchar(760 × 係数)`           | 縮小済みかどうか         |
+| それ以外              | `varchar(760 × 係数)` or `text` | インデックス有無で分岐   |
+
+MySQL ではインデックス対象カラムの `varchar` サイズに上限があるため、
+`ReducedVarcharLength`（デフォルト `760`）への縮小処理が行われる。
+
+### (3) デフォルト値制約の比較（Constraints.HasChanges）
+
+定義ファイル上の `Default` プロパティと、
+実DBのデフォルト値制約を文字列として比較する。
+
+**ファイル**: `Functions/Rds/Parts/Constraints.cs`
+
+比較方法:
+
+1. 定義側: `Default` が設定されているカラムを `ColumnName` 順にソートし、
+   `"{ColumnName},{DefaultValue}"` 形式の文字列に変換
+2. DB側: `Def.Sql.Defaults` で取得したデフォルト値情報を同様にソートして文字列化
+3. 両者を改行区切りで結合した文字列を完全一致比較
+
+`_history` テーブルの `Ver` カラムは比較対象から除外される。
+
+デフォルト値は型に応じて以下のように変換される:
+
+| C# 型サマリ    | デフォルト値の表現                                |
+| -------------- | ------------------------------------------------- |
+| `CsString`     | `'{Default}'`（シングルクォート囲み）             |
+| `CsDateTime`   | `now` → `getdate()` / `CURRENT_TIMESTAMP` 等      |
+| `CsBool`       | RDBMS固有のBoolean値（`1`/`0` or `true`/`false`） |
+| その他（数値） | そのまま                                          |
+
+### (4) インデックス構成の比較（Indexes.HasChanges）
+
+定義ファイル上のインデックス名一覧と、
+実DBのインデックス名一覧を文字列比較する。
+
+**ファイル**: `Functions/Rds/Parts/Indexes.cs`
+
+#### SQL Server / PostgreSQL
+
+定義側の `IndexInfoCollection` から生成したインデックス名と、
+`Def.Sql.Indexes` で取得した実DBのインデックス名を
+カンマ区切りで結合して完全一致比較する。
+PostgreSQL では全文検索インデックス（`ftx`）を比較対象から除外する。
+
+#### MySQL
+
+MySQL では PK とそれ以外のインデックスを分離して比較する。
+
+- **PK**: 定義側の PK 情報と `PRIMARY` キーの列構成を比較
+- **IX**: 定義側のインデックス名一覧と
+  DB側のインデックス名一覧（`PRIMARY`/`ftx` 除外）を比較
+
+MySQL 固有の処理として、`PkMySql` プロパティが設定されている場合、
+通常の `Pk` の代わりにこちらが PK 構成として使用される。
+
+#### DisableIndexChangeDetection パラメータ
+
+`Parameters.Rds.DisableIndexChangeDetection`（デフォルト: `true`）が有効な場合、
+インデックスの変更検知は**完全にスキップ**される。
+これにより、インデックス変更のみの差異ではマイグレーションが発生しない。
+
+### カラムフィルタリング条件
+
+`ConfigureTableSet()` で比較対象となるカラム定義には、
+以下のフィルタリング条件が適用される。
+
+**ファイル**: `Functions/Rds/TablesConfigurator.cs`
+
+| フィルタ条件            | 除外されるカラム                                   |
+| ----------------------- | -------------------------------------------------- |
+| `!o.NotUpdate`          | `NotUpdate == true` のカラム（テーブル構成対象外） |
+| `JoinTableName` が空    | JOIN用のカラム（実テーブルには存在しない）         |
+| `Calc` が空             | 計算列（実テーブルには存在しない）                 |
+| `!o.LowSchemaVersion()` | スキーマバージョン制限を超えるカラム               |
+| `ShouldIncludeColumn()` | `ExcludeBaseColumns` による除外                    |
+
+#### LowSchemaVersion
+
+**ファイル**: `Implem.DefinitionAccessor/Extensions.cs`
+
+`SysLogs` テーブルのみに適用される。
+`columnDefinition.SchemaVersion > Parameters.Rds.SysLogsSchemaVersion`
+の場合、そのカラムは構成対象から除外される。
+これにより SysLogs テーブルのスキーマを段階的にアップグレードできる。
+
+#### ExcludeBaseColumns
+
+テーブル固有カラムの全てに `ExcludeBaseColumns == true` が設定されている場合、
+\_Base 継承で追加されたカラムがそのテーブルの構成から除外される。
+
+### マイグレーションの実行方式
+
+変更が検知された場合、`MigrateTable()` は
+「テーブル再作成 + データ移行」方式でマイグレーションを実行する。
+
+**ファイル**: `Functions/Rds/Parts/Tables.cs`
+
+```mermaid
+flowchart TD
+    A["MigrateTable()"] --> B["(1) 新定義で一時テーブル作成<br/>{datetime}_{テーブル名}"]
+    B --> C{"IDENTITY列あり?<br/>(history/deleted以外)"}
+    C -->|Yes| D["MigrateTableWithIdentity<br/>IDENTITY_INSERT ON → データコピー → OFF"]
+    C -->|No| E["MigrateTable<br/>通常のINSERT INTO...SELECT"]
+    D --> F["(2) 旧テーブル削除 + 一時テーブルをRENAME"]
+    E --> F
+```
+
+#### データ移行時のカラムマッピング
+
+既存テーブルから新テーブルへのデータコピー時、
+各カラムは以下のルールでマッピングされる。
+
+| 条件                                       | マッピング方法                           |
+| ------------------------------------------ | ---------------------------------------- |
+| 旧テーブルに同名カラムが存在する           | そのままコピー                           |
+| 旧テーブルになく `OldColumnName` が設定    | 旧カラム名からコピー（リネーム対応）     |
+| 旧テーブルになく `Default` もなく NOT NULL | 型に応じたデフォルト値を補完             |
+| 上記以外（新規追加 or NULL許可）           | コピー対象外（NULL or DEFAULT で初期化） |
+
+**型に応じたデフォルト値の補完**:
+
+| 型サマリ       | 補完値                               |
+| -------------- | ------------------------------------ |
+| `CsString`     | `''`（空文字列）                     |
+| `CsDateTime`   | `getdate()` / `CURRENT_TIMESTAMP` 等 |
+| `CsBool`       | RDBMS固有のBoolean値                 |
+| その他（数値） | `0`                                  |
+
+---
+
 ## テーブル定義ファイル（Definition_Column）
 
 ### 格納場所
@@ -450,23 +814,23 @@ Implem.Pleasanter/App_Data/Definitions/Definition_Column/
 
 ### テーブル一覧と定義ファイル数
 
-| テーブル名              | カラム定義数 | 説明                           |
-| ----------------------- | -----------: | ------------------------------ |
-| `_Bases`                |            8 | 全テーブル共通ベースカラム     |
-| `_BaseItems`            |            5 | アイテム系テーブル共通カラム   |
-| `Users`                 |           62 | ユーザー管理                   |
-| `SysLogs`               |           48 | システムログ                   |
-| `Sites`                 |           32 | サイト管理                     |
-| `Tenants`               |           21 | テナント管理                   |
-| `Binaries`              |           15 | バイナリデータ                 |
-| `OutgoingMails`         |           15 | 送信メール                     |
-| `Registrations`         |           15 | ユーザー登録                   |
-| `Groups`                |           14 | グループ管理                   |
-| `Issues`                |           11 | 期限付きテーブル               |
-| `Items`                 |            8 | アイテム管理                   |
-| `Results`               |            7 | 結果テーブル                   |
-| `QRTZ_*`（複数テーブル）|           80 | Quartz.NET スケジューラ用      |
-| その他                  |           86 | セッション、権限、リンク等     |
+| テーブル名               | カラム定義数 | 説明                         |
+| ------------------------ | -----------: | ---------------------------- |
+| `_Bases`                 |            8 | 全テーブル共通ベースカラム   |
+| `_BaseItems`             |            5 | アイテム系テーブル共通カラム |
+| `Users`                  |           62 | ユーザー管理                 |
+| `SysLogs`                |           48 | システムログ                 |
+| `Sites`                  |           32 | サイト管理                   |
+| `Tenants`                |           21 | テナント管理                 |
+| `Binaries`               |           15 | バイナリデータ               |
+| `OutgoingMails`          |           15 | 送信メール                   |
+| `Registrations`          |           15 | ユーザー登録                 |
+| `Groups`                 |           14 | グループ管理                 |
+| `Issues`                 |           11 | 期限付きテーブル             |
+| `Items`                  |            8 | アイテム管理                 |
+| `Results`                |            7 | 結果テーブル                 |
+| `QRTZ_*`（複数テーブル） |           80 | Quartz.NET スケジューラ用    |
+| その他                   |           86 | セッション、権限、リンク等   |
 
 ### JSON ファイルの構造
 
@@ -515,25 +879,25 @@ Implem.Pleasanter/App_Data/Definitions/Definition_Column/
 
 #### DB構成に関わる主要プロパティ
 
-| プロパティ     | 型       | 説明                                            |
-| -------------- | -------- | ----------------------------------------------- |
-| `TableName`    | `string` | 作成先テーブル名                                |
-| `ColumnName`   | `string` | カラム名                                        |
-| `TypeName`     | `string` | データ型（SQL Server 基準名）                   |
-| `MaxLength`    | `int`    | 最大長（`-1` = max / text）                     |
-| `Size`         | `string` | decimal等のサイズ指定（例: `18,4`）             |
-| `Pk`           | `int`    | 主キー順序（>0 で PK構成列）                    |
-| `PkOrderBy`    | `string` | PK のソート順（`asc`/`desc`）                   |
-| `PkHistory`    | `int`    | 履歴テーブル用PK順序                            |
-| `Ix1`〜`Ix5`  | `int`    | インデックス1〜5の構成列順序                    |
-| `Nullable`     | `bool`   | NULL許可                                        |
-| `Identity`     | `bool`   | IDENTITY（自動採番）属性                        |
-| `Seed`         | `int`    | IDENTITYの初期値                                |
-| `Unique`       | `bool`   | ユニーク制約                                    |
-| `Default`      | `string` | デフォルト値                                    |
-| `NotUpdate`    | `bool`   | テーブル構成対象外フラグ                        |
-| `History`      | `int`    | 履歴テーブル構成列順序（>0 で対象）             |
-| `OldColumnName`| `string` | マイグレーション用の旧カラム名                  |
+| プロパティ      | 型       | 説明                                |
+| --------------- | -------- | ----------------------------------- |
+| `TableName`     | `string` | 作成先テーブル名                    |
+| `ColumnName`    | `string` | カラム名                            |
+| `TypeName`      | `string` | データ型（SQL Server 基準名）       |
+| `MaxLength`     | `int`    | 最大長（`-1` = max / text）         |
+| `Size`          | `string` | decimal等のサイズ指定（例: `18,4`） |
+| `Pk`            | `int`    | 主キー順序（>0 で PK構成列）        |
+| `PkOrderBy`     | `string` | PK のソート順（`asc`/`desc`）       |
+| `PkHistory`     | `int`    | 履歴テーブル用PK順序                |
+| `Ix1`〜`Ix5`    | `int`    | インデックス1〜5の構成列順序        |
+| `Nullable`      | `bool`   | NULL許可                            |
+| `Identity`      | `bool`   | IDENTITY（自動採番）属性            |
+| `Seed`          | `int`    | IDENTITYの初期値                    |
+| `Unique`        | `bool`   | ユニーク制約                        |
+| `Default`       | `string` | デフォルト値                        |
+| `NotUpdate`     | `bool`   | テーブル構成対象外フラグ            |
+| `History`       | `int`    | 履歴テーブル構成列順序（>0 で対象） |
+| `OldColumnName` | `string` | マイグレーション用の旧カラム名      |
 
 ### 読み込みの仕組み
 
@@ -564,7 +928,7 @@ flowchart TD
 
 **ファイル**: `Implem.Libraries/Classes/XlsIo.cs`（`ReadDefinitionFiles` メソッド）
 
-#### (iii) _Base カラムの継承展開
+#### (iii) \_Base カラムの継承展開
 
 `SetColumnDefinitionAdditional()` により、
 `_Base` / `_BaseItem` の共通カラム定義が各テーブルにコピーされる。
@@ -614,27 +978,32 @@ CodeDefiner の `TablesConfigurator` はこのコレクションを参照して
 
 ## 関連ソースコード
 
-| ファイル                                                    | 役割                                             |
-| ----------------------------------------------------------- | ------------------------------------------------ |
-| `Implem.CodeDefiner/Starter.cs`                             | エントリーポイント、コマンドディスパッチ         |
-| `Implem.CodeDefiner/Functions/Rds/Configurator.cs`          | DB構成のオーケストレーション                     |
-| `Implem.CodeDefiner/Functions/Rds/RdsConfigurator.cs`       | データベース作成・更新                           |
-| `Implem.CodeDefiner/Functions/Rds/UsersConfigurator.cs`     | ユーザー作成・更新                               |
-| `Implem.CodeDefiner/Functions/Rds/SchemaConfigurator.cs`    | スキーマ設定                                     |
-| `Implem.CodeDefiner/Functions/Rds/TablesConfigurator.cs`    | テーブル構成（作成・マイグレーション）           |
-| `Implem.CodeDefiner/Functions/Rds/PrivilegeConfigurator.cs` | 権限設定                                         |
-| `Implem.CodeDefiner/Functions/Rds/Parts/Tables.cs`          | テーブル操作（作成・マイグレーション・存在確認） |
-| `Implem.CodeDefiner/Functions/Rds/Parts/Columns.cs`         | カラム定義生成・変更検知                         |
-| `Implem.CodeDefiner/Functions/Rds/Parts/Indexes.cs`         | インデックス定義・変更検知                       |
-| `Implem.CodeDefiner/Functions/Rds/Parts/Constraints.cs`     | デフォルト値制約                                 |
-| `Implem.Factory/RdsFactory.cs`                              | Abstract Factoryの生成                           |
-| `Rds/Implem.IRds/ISqlObjectFactory.cs`                      | 抽象ファクトリインターフェース                   |
-| `Rds/Implem.IRds/ISqls.cs`                                  | SQL方言インターフェース                          |
-| `Rds/Implem.IRds/ISqlDataTypes.cs`                          | データ型変換インターフェース                     |
-| `Rds/Implem.IRds/ISqlDefinitionSetting.cs`                  | RDBMS固有設定インターフェース                    |
-| `Rds/Implem.SqlServer/SqlServerObjectFactory.cs`            | SQL Server ファクトリ実装                        |
-| `Rds/Implem.PostgreSql/PostgreSqlObjectFactory.cs`          | PostgreSQL ファクトリ実装                        |
-| `Rds/Implem.MySql/MySqlObjectFactory.cs`                    | MySQL ファクトリ実装                             |
-| `App_Data/Definitions/Sqls/SQLServer/*.sql`                 | SQL Server 用SQLテンプレート（55個）             |
-| `App_Data/Definitions/Sqls/PostgreSQL/*.sql`                | PostgreSQL 用SQLテンプレート（55個）             |
-| `App_Data/Definitions/Sqls/MySQL/*.sql`                     | MySQL 用SQLテンプレート（55個）                  |
+| ファイル                                                       | 役割                                             |
+| -------------------------------------------------------------- | ------------------------------------------------ |
+| `Implem.CodeDefiner/Starter.cs`                                | エントリーポイント、コマンドディスパッチ         |
+| `Implem.CodeDefiner/Functions/Rds/Configurator.cs`             | DB構成のオーケストレーション                     |
+| `Implem.CodeDefiner/Functions/Rds/RdsConfigurator.cs`          | データベース作成・更新                           |
+| `Implem.CodeDefiner/Functions/Rds/UsersConfigurator.cs`        | ユーザー作成・更新                               |
+| `Implem.CodeDefiner/Functions/Rds/SchemaConfigurator.cs`       | スキーマ設定                                     |
+| `Implem.CodeDefiner/Functions/Rds/TablesConfigurator.cs`       | テーブル構成（作成・マイグレーション）           |
+| `Implem.CodeDefiner/Functions/Rds/PrivilegeConfigurator.cs`    | 権限設定                                         |
+| `Implem.CodeDefiner/Functions/Rds/Parts/Tables.cs`             | テーブル操作（作成・マイグレーション・存在確認） |
+| `Implem.CodeDefiner/Functions/Rds/Parts/Columns.cs`            | カラム定義生成・変更検知                         |
+| `Implem.CodeDefiner/Functions/Rds/Parts/Indexes.cs`            | インデックス定義・変更検知                       |
+| `Implem.CodeDefiner/Functions/Rds/Parts/Constraints.cs`        | デフォルト値制約                                 |
+| `Implem.Factory/RdsFactory.cs`                                 | Abstract Factoryの生成                           |
+| `Rds/Implem.IRds/ISqlObjectFactory.cs`                         | 抽象ファクトリインターフェース                   |
+| `Rds/Implem.IRds/ISqls.cs`                                     | SQL方言インターフェース                          |
+| `Rds/Implem.IRds/ISqlDataTypes.cs`                             | データ型変換インターフェース                     |
+| `Rds/Implem.IRds/ISqlDefinitionSetting.cs`                     | RDBMS固有設定インターフェース                    |
+| `Rds/Implem.SqlServer/SqlServerObjectFactory.cs`               | SQL Server ファクトリ実装                        |
+| `Rds/Implem.PostgreSql/PostgreSqlObjectFactory.cs`             | PostgreSQL ファクトリ実装                        |
+| `Rds/Implem.MySql/MySqlObjectFactory.cs`                       | MySQL ファクトリ実装                             |
+| `App_Data/Definitions/Sqls/SQLServer/*.sql`                    | SQL Server 用SQLテンプレート（55個）             |
+| `App_Data/Definitions/Sqls/PostgreSQL/*.sql`                   | PostgreSQL 用SQLテンプレート（55個）             |
+| `App_Data/Definitions/Sqls/MySQL/*.sql`                        | MySQL 用SQLテンプレート（55個）                  |
+| `App_Data/Definitions/Definition_Column/*.json`                | カラム定義ファイル（427個）                      |
+| `App_Data/Definitions/Definition_Column/__ColumnSettings.json` | カラムスキーマ定義                               |
+| `Implem.DefinitionAccessor/Def.cs`                             | 定義コレクション管理・変換処理                   |
+| `Implem.DefinitionAccessor/Initializer.cs`                     | 定義ファイル読込・\_Base継承展開                 |
+| `Implem.Libraries/Classes/XlsIo.cs`                            | JSON定義ファイルローダー                         |

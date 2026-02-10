@@ -39,7 +39,13 @@ npm run submodule:init
 git submodule update --init --recursive
 ```
 
-詳細は[開発環境構築ガイド](../docs/contributing/development-environment.md#プリザンター本体リポジトリ推奨)を参照。
+### サブモジュールの更新
+
+調査開始前にサブモジュールを最新化すること。下記のコマンドを実行する：
+
+```bash
+git submodule update --remote
+```
 
 ## 出力ルール
 

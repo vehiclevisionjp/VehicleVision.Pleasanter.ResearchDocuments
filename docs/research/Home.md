@@ -30,6 +30,7 @@
 | [pleasanter-codedefiner-database-management.md](pleasanter-codedefiner-database-management.md)       | CodeDefiner DB作成・更新ロジックとRDBMS差違吸収調査 | 2026-02-10 |
 | [pleasanter-user-access-control.md](pleasanter-user-access-control.md)                               | ユーザアクセス権限・アクセス制御 実装調査           | 2026-02-10 |
 | [pleasanter-permission-hierarchy.md](pleasanter-permission-hierarchy.md)                             | 権限階層構造（User・Group・Dept）調査               | 2026-02-10 |
+| [pleasanter-modal-new-record-dialog.md](pleasanter-modal-new-record-dialog.md)                       | 編集モーダル 新規作成対応 仕様・改修点調査          | 2026-02-12 |
 
 ## 注意事項
 

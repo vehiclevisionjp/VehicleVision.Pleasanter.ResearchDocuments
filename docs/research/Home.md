@@ -62,6 +62,7 @@
 | 001 | [CodeDefiner データベース作成・更新ロジック](05-基盤・ツール/001-CodeDefiner-DB作成更新.md) | CodeDefiner の DB 作成・更新と RDBMS 差違  | 2026-02-10 |
 | 002 | [拡張ライブラリ（ExtendedLibrary）の仕様と使い方](05-基盤・ツール/002-拡張ライブラリ.md)    | ExtendedLibrary の仕組み・DLL 読み込み影響 | 2026-02-12 |
 | 003 | [多言語対応（i18n）の実装](05-基盤・ツール/003-多言語対応.md)                               | DisplayAccessor・言語切り替え・CodeDefiner | 2026-02-12 |
+| 004 | [SMTP OAuth 2.0 対応](05-基盤・ツール/004-SMTP-OAuth対応.md)                                | SMTP OAuth 2.0 認証・M365/GWS 設定例       | 2026-02-12 |
 
 ## 注意事項
 

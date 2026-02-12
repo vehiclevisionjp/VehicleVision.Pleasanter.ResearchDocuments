@@ -312,7 +312,7 @@ private void ValidateOAuthParameters()
 | **クライアント ID** | ドメイン全体の委任で使用                      |
 | **メールアドレス**  | `xxx@project-id.iam.gserviceaccount.com` 形式 |
 
-4. **キー** タブ > **鍵を追加** > **新しい鍵を作成**（JSON）でキーファイルをダウンロード
+1. **キー** タブ > **鍵を追加** > **新しい鍵を作成**（JSON）でキーファイルをダウンロード
 
 > **重要**: ダウンロードした JSON ファイルには `client_id` と `private_key` が含まれる。安全な場所に保管すること。
 

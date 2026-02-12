@@ -46,6 +46,7 @@
 | 001 | [Upsert API 実装](03-データ操作・API/001-Upsert-API.md)                           | Upsert API のレースコンディション問題 | 2026-02-03 |
 | 002 | [SiteSetting 更新時の変更履歴記録](03-データ操作・API/002-SiteSetting変更履歴.md) | SiteSetting 更新時の履歴記録の仕組み  | 2026-02-03 |
 | 003 | [拡張SQL 実行権限・外部DB接続](03-データ操作・API/003-拡張SQL・外部DB接続.md)     | 拡張SQL の実行権限と DBリンク         | 2026-02-06 |
+| 004 | [Extensions テーブルの使用法](03-データ操作・API/004-Extensionsテーブル.md)       | Extensions テーブルの構造・API 操作   | 2026-02-13 |
 
 ### 04. UI・画面
 

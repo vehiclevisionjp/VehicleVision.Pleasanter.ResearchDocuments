@@ -44,10 +44,19 @@ if (!owner || !repo) {
 
 // ここは実際の構成に合わせて変更してください
 const DOCS_DIR = path.join(process.cwd(), 'docs', 'research');
+const WIKI_TEMPLATE_DIR = path.join(process.cwd(), 'docs', 'wiki');
 
 // Wiki にのみ残すべきページ（削除対象外）
 // [private] で始まるページは自動的に保護されます
 const PROTECTED_WIKI_PAGES = [];
+
+/**
+ * カテゴリディレクトリ名から表示用ラベルを取得
+ * 例: "01-認証・権限" → "認証・権限"
+ */
+function getCategoryLabel(dirName) {
+  return dirName.replace(/^\d+-/, '');
+}
 
 /**
  * docs/research/ 配下の Markdown ファイルを再帰的に取得
@@ -85,7 +94,59 @@ function getWikiTitle(relativePath) {
   // パス区切りをハイフンに変換（必要に応じて調整）
   // 例: "01_要件定義書" -> "01_要件定義書"
   // 例: "01_要件定義書/顧客要件" -> "01_要件定義書-顧客要件"
-  return nameWithoutExt.replace(/\//g, '-');
+  return nameWithoutExt.replace(/[\\/]/g, '-');
+}
+
+/**
+ * ファイル名から表示用ラベルを取得
+ * 例: "001-Upsert-API.md" → "Upsert API"
+ */
+function getDocLabel(relativePath) {
+  const baseName = path.basename(relativePath, '.md');
+  // 先頭の連番部分（例: "001-"）を除去し、ハイフンをスペースに変換
+  return baseName.replace(/^\d+-/, '').replace(/-/g, ' ');
+}
+
+/**
+ * ドキュメントファイルをカテゴリ別にグルーピングし、サイドバー用のリンクリストを生成
+ */
+function buildGroupedDocsList(files) {
+  // Home.md はトップレベルに配置
+  const topLevel = files.filter(f => !f.relativePath.includes('/') || f.relativePath.includes('wiki-backup'));
+  const categorized = files.filter(f => f.relativePath.includes('/') && !f.relativePath.includes('wiki-backup'));
+
+  // カテゴリ別にグルーピング
+  const groups = {};
+  for (const file of categorized) {
+    const category = file.relativePath.split(/[\\/]/)[0];
+    if (!groups[category]) {
+      groups[category] = [];
+    }
+    groups[category].push(file);
+  }
+
+  const lines = [];
+
+  // トップレベルファイル（Home.md 等）
+  for (const file of topLevel) {
+    const title = getDocLabel(file.relativePath);
+    lines.push(`- [[${title}|${file.wikiTitle}]]`);
+  }
+
+  // カテゴリ別
+  const sortedCategories = Object.keys(groups).sort();
+  for (const category of sortedCategories) {
+    const label = getCategoryLabel(category);
+    lines.push('');
+    lines.push(`### ${label}`);
+    lines.push('');
+    for (const file of groups[category]) {
+      const title = getDocLabel(file.relativePath);
+      lines.push(`- [[${title}|${file.wikiTitle}]]`);
+    }
+  }
+
+  return lines.join('\n');
 }
 
 /**
@@ -167,7 +228,7 @@ function getAllWikiPages(wikiDir) {
     if (file.endsWith('.md')) {
       const title = file.replace(/\.md$/, '');
       // システムページは除外
-      if (title !== '_Sidebar' && title !== 'Home') {
+      if (title !== '_Sidebar' && title !== '_Footer' && title !== 'Home') {
         pages.push({
           title: title,
           fileName: file,
@@ -324,16 +385,32 @@ function main() {
     }
 
     // サイドバーを作成
-    const sidebarContent = `# 目次
+    const sidebarTemplatePath = path.join(WIKI_TEMPLATE_DIR, '_Sidebar.md');
+    const docsList = buildGroupedDocsList(files);
+    const protectedList = protectedPages.length > 0
+      ? `### Wiki 専用ページ\n\n${protectedPages.map(p => `- [[${p.wikiTitle}|${p.wikiTitle}]]`).join('\n')}`
+      : '';
+    if (fs.existsSync(sidebarTemplatePath)) {
+      const sidebarContent = fs.readFileSync(sidebarTemplatePath, 'utf-8')
+        .replace(/\{\{DOCS_LIST\}\}/g, docsList)
+        .replace(/\{\{PROTECTED_PAGES\}\}/g, protectedList);
+      createOrUpdateWikiPage('_Sidebar', sidebarContent, wikiDir);
+    } else {
+      // テンプレートがない場合はフォールバック
+      const sidebarContent = `# 目次\n\n${docsList}\n\n${protectedList}\n`;
+      createOrUpdateWikiPage('_Sidebar', sidebarContent, wikiDir);
+    }
 
-${files
-        .filter(f => !f.relativePath?.includes('wiki-backup'))
-        .map(f => `- [[${f.wikiTitle}|${f.wikiTitle}]]`)
-        .join('\n')}
-
-${protectedPages.length > 0 ? `## Wiki 専用ページ\n\n${protectedPages.map(p => `- [[${p.wikiTitle}|${p.wikiTitle}]]`).join('\n')}\n` : ''}
-`;
-    createOrUpdateWikiPage('_Sidebar', sidebarContent, wikiDir);
+    // カスタムフッターを作成
+    const footerTemplatePath = path.join(WIKI_TEMPLATE_DIR, '_Footer.md');
+    if (fs.existsSync(footerTemplatePath)) {
+      const repoUrl = `https://github.com/${GITHUB_REPO}`;
+      const footerContent = fs.readFileSync(footerTemplatePath, 'utf-8')
+        .replace(/\{\{YEAR\}\}/g, new Date().getFullYear().toString())
+        .replace(/\{\{REPO_URL\}\}/g, repoUrl)
+        .replace(/\{\{REPO\}\}/g, GITHUB_REPO);
+      createOrUpdateWikiPage('_Footer', footerContent, wikiDir);
+    }
 
     // 削除対象のページを処理
     const pagesToDelete = wikiPages

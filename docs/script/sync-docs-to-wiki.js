@@ -89,6 +89,47 @@ function getWikiTitle(relativePath) {
 }
 
 /**
+ * Markdown コンテンツ内の相対リンクを Wiki 用に変換
+ *
+ * - 相対パスを解決してフラットな Wiki ページ名に変換
+ * - .md 拡張子を除去（Wiki ページリンクにする）
+ * - アンカー（#...）は維持
+ */
+function convertLinksForWiki(content, sourceRelativePath) {
+  const sourceDir = path.dirname(sourceRelativePath);
+
+  // Markdown リンク [text](path) のパターン
+  // 外部URL（http/https）や絶対パス（/）は除外
+  return content.replace(
+    /\[([^\]]*)\]\((?!https?:\/\/|#|\/)([^)]+)\)/g,
+    (match, text, linkPath) => {
+      // アンカー部分を分離
+      const [filePath, anchor] = linkPath.split('#');
+
+      if (!filePath) {
+        // #anchor のみの場合はそのまま返す
+        return match;
+      }
+
+      // 相対パスを解決（sourceDir 基準）
+      const resolved = path.posix.normalize(
+        path.posix.join(sourceDir.replace(/\\/g, '/'), filePath.replace(/\\/g, '/'))
+      );
+
+      // .md ファイルへのリンクかどうか判定
+      if (resolved.endsWith('.md')) {
+        const wikiTitle = getWikiTitle(resolved);
+        const anchorPart = anchor ? `#${anchor}` : '';
+        return `[${text}](${wikiTitle}${anchorPart})`;
+      }
+
+      // .md 以外のリンク（画像等）はそのまま維持
+      return match;
+    }
+  );
+}
+
+/**
  * Wiki ページを作成または更新（Gitリポジトリ経由）
  */
 function createOrUpdateWikiPage(title, content, wikiDir) {
@@ -277,7 +318,8 @@ function main() {
 
     // すべてのファイルを追加
     for (const file of files) {
-      const content = fs.readFileSync(file.filePath, 'utf-8');
+      const rawContent = fs.readFileSync(file.filePath, 'utf-8');
+      const content = convertLinksForWiki(rawContent, file.relativePath);
       createOrUpdateWikiPage(file.wikiTitle, content, wikiDir);
     }
 

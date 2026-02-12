@@ -1,4 +1,4 @@
-# プリザンター Sections サーバースクリプト AutoPostBack 動作調査
+# Sections サーバースクリプト AutoPostBack 動作
 
 サーバースクリプトにおける `siteSettings.Sections` の動作と、AutoPostBack 時に期待動作しない原因を調査する。
 

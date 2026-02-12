@@ -1,4 +1,4 @@
-# プリザンター 拡張SQL 実行権限・外部DB接続ガイド
+# 拡張SQL 実行権限・外部DB接続
 
 拡張SQL（ExtendedSql）の実行権限設定と、各DBMS（SQL Server / PostgreSQL / MySQL）での外部データベース接続方法をまとめる。
 
@@ -47,7 +47,7 @@
 
 | 項目             | 内容                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------- |
-| 調査日           | 2026年2月6日                                                                                  |
+| 調査日           | 2026-02-06                                                                                    |
 | 対象バージョン   | プリザンター main ブランチ commit `8c261c0a8`                                                 |
 | 対象ファイル     | ExtendedSql.cs, Rds.cs, ExtensionUtilities.cs, UsersConfigurator.cs, PrivilegeConfigurator.cs |
 | 関連ドキュメント | [公式マニュアル - 拡張SQL](https://pleasanter.org/manual/extended-sql)                        |

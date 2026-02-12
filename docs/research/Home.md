@@ -7,6 +7,11 @@
 
 - [目的](#目的)
 - [ドキュメント一覧](#ドキュメント一覧)
+    - [認証・権限](#認証権限)
+    - [セッション](#セッション)
+    - [データ操作・API](#データ操作api)
+    - [UI・画面](#ui画面)
+    - [基盤・ツール](#基盤ツール)
 - [注意事項](#注意事項)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -19,18 +24,41 @@
 
 ## ドキュメント一覧
 
-| ドキュメント                                                                                         | 説明                                                | 調査日     |
-| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------- |
-| [pleasanter-upsert-implementation.md](pleasanter-upsert-implementation.md)                           | Upsert API の実装調査（レースコンディション問題）   | 2026-02-03 |
-| [pleasanter-session-api-retention.md](pleasanter-session-api-retention.md)                           | Sessions API のセッション有効期間調査               | 2026-02-03 |
-| [pleasanter-site-setting-history.md](pleasanter-site-setting-history.md)                             | SiteSetting 更新時の変更履歴記録調査                | 2026-02-03 |
-| [pleasanter-session-management.md](pleasanter-session-management.md)                                 | Session 管理の実装調査（CRUD・KVS拡張性）           | 2026-02-06 |
-| [pleasanter-extendedsql-dblink.md](pleasanter-extendedsql-dblink.md)                                 | 拡張SQL 実行権限・DBリンク調査                      | 2026-02-06 |
-| [pleasanter-sections-serverscript-autopostback.md](pleasanter-sections-serverscript-autopostback.md) | Sections サーバースクリプト AutoPostBack 動作調査   | 2026-02-10 |
-| [pleasanter-codedefiner-database-management.md](pleasanter-codedefiner-database-management.md)       | CodeDefiner DB作成・更新ロジックとRDBMS差違吸収調査 | 2026-02-10 |
-| [pleasanter-user-access-control.md](pleasanter-user-access-control.md)                               | ユーザアクセス権限・アクセス制御 実装調査           | 2026-02-10 |
-| [pleasanter-permission-hierarchy.md](pleasanter-permission-hierarchy.md)                             | 権限階層構造（User・Group・Dept）調査               | 2026-02-10 |
-| [pleasanter-modal-new-record-dialog.md](pleasanter-modal-new-record-dialog.md)                       | 編集モーダル 新規作成対応 仕様・改修点調査          | 2026-02-12 |
+### 認証・権限
+
+| #   | ドキュメント                                                             | 説明                           | 調査日     |
+| --- | ------------------------------------------------------------------------ | ------------------------------ | ---------- |
+| 001 | [ユーザアクセス権限・アクセス制御](01-auth/001-access-control.md)        | ユーザ認証・アクセス制御の実装 | 2026-02-10 |
+| 002 | [権限階層構造（User・Group・Dept）](01-auth/002-permission-hierarchy.md) | User・Group・Dept の権限階層   | 2026-02-10 |
+
+### セッション
+
+| #   | ドキュメント                                                           | 説明                          | 調査日     |
+| --- | ---------------------------------------------------------------------- | ----------------------------- | ---------- |
+| 001 | [Sessions API セッション有効期間](02-session/001-session-retention.md) | Sessions API の有効期間の仕様 | 2026-02-03 |
+| 002 | [Session 管理の実装](02-session/002-session-management.md)             | Session CRUD・KVS 拡張性      | 2026-02-06 |
+
+### データ操作・API
+
+| #   | ドキュメント                                                          | 説明                                  | 調査日     |
+| --- | --------------------------------------------------------------------- | ------------------------------------- | ---------- |
+| 001 | [Upsert API 実装](03-data-api/001-upsert.md)                          | Upsert API のレースコンディション問題 | 2026-02-03 |
+| 002 | [SiteSetting 更新時の変更履歴記録](03-data-api/002-site-history.md)   | SiteSetting 更新時の履歴記録の仕組み  | 2026-02-03 |
+| 003 | [拡張SQL 実行権限・外部DB接続](03-data-api/003-extendedsql-dblink.md) | 拡張SQL の実行権限と DBリンク         | 2026-02-06 |
+
+### UI・画面
+
+| #   | ドキュメント                                                                        | 説明                                     | 調査日     |
+| --- | ----------------------------------------------------------------------------------- | ---------------------------------------- | ---------- |
+| 001 | [Sections サーバースクリプト AutoPostBack 動作](04-ui/001-sections-autopostback.md) | Sections での AutoPostBack 動作仕様      | 2026-02-10 |
+| 002 | [編集モーダル 新規作成対応](04-ui/002-modal-new-record.md)                          | 編集モーダルの新規作成対応の仕様・改修点 | 2026-02-12 |
+| 003 | [一覧画面 ページネーション改修](04-ui/003-grid-pagination.md)                       | 一覧画面のページネーション改修           | 2026-02-12 |
+
+### 基盤・ツール
+
+| #   | ドキュメント                                                                 | 説明                                      | 調査日     |
+| --- | ---------------------------------------------------------------------------- | ----------------------------------------- | ---------- |
+| 001 | [CodeDefiner データベース作成・更新ロジック](05-infra/001-codedefiner-db.md) | CodeDefiner の DB 作成・更新と RDBMS 差違 | 2026-02-10 |
 
 ## 注意事項
 

@@ -15,27 +15,30 @@ const path = require("path");
 const docsDir = path.join(__dirname, "..");
 const rootDir = path.join(__dirname, "..", "..");
 
-// docs配下の全ディレクトリを処理対象にする
-const targetDirs = fs
-    .readdirSync(docsDir, { withFileTypes: true })
-    .filter((dirent) => dirent.isDirectory() && dirent.name !== "script")
-    .map((dirent) => dirent.name);
-
-// 各ディレクトリ内のmdファイルを収集
-const files = [];
-targetDirs.forEach((dir) => {
-    const dirPath = path.join(docsDir, dir);
-    if (fs.existsSync(dirPath)) {
-        fs.readdirSync(dirPath)
-            .filter((f) => f.endsWith(".md"))
-            .forEach((f) => files.push(path.join(dirPath, f)));
+/**
+ * 指定ディレクトリ内の.mdファイルを再帰的に収集する
+ * @param {string} dir - 探索するディレクトリパス
+ * @param {string[]} [excludeDirs=[]] - 除外するディレクトリ名
+ * @returns {string[]} .mdファイルの絶対パス一覧
+ */
+function collectMdFiles(dir, excludeDirs = []) {
+    const results = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            if (!excludeDirs.includes(entry.name)) {
+                results.push(...collectMdFiles(fullPath));
+            }
+        } else if (entry.isFile() && entry.name.endsWith(".md")) {
+            results.push(fullPath);
+        }
     }
-});
+    return results;
+}
 
-// docs直下のmdファイルも追加
-fs.readdirSync(docsDir)
-    .filter((f) => f.endsWith(".md"))
-    .forEach((f) => files.push(path.join(docsDir, f)));
+// docs配下の全.mdファイルを再帰的に収集（scriptディレクトリは除外）
+const files = collectMdFiles(docsDir, ["script"]);
 
 // ルートディレクトリのmdファイルも追加
 fs.readdirSync(rootDir)

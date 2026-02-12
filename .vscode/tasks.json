@@ -1,7 +1,8 @@
 {
   "version": "2.0.0",
   "presentation": {
-    "showReuseMessage": false
+    "showReuseMessage": false,
+    "close": true
   },
   "tasks": [
     {

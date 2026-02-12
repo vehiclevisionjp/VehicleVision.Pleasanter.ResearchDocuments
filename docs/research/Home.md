@@ -5,15 +5,14 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-- [実装調査ドキュメント](#実装調査ドキュメント)
-    - [目的](#目的)
-    - [ドキュメント一覧](#ドキュメント一覧)
-        - [01. 認証・権限](#01-認証権限)
-        - [02. セッション](#02-セッション)
-        - [03. データ操作・API](#03-データ操作api)
-        - [04. UI・画面](#04-ui画面)
-        - [05. 基盤・ツール](#05-基盤ツール)
-    - [注意事項](#注意事項)
+- [目的](#目的)
+- [ドキュメント一覧](#ドキュメント一覧)
+    - [01. 認証・権限](#01-認証権限)
+    - [02. セッション](#02-セッション)
+    - [03. データ操作・API](#03-データ操作api)
+    - [04. UI・画面](#04-ui画面)
+    - [05. 基盤・ツール](#05-基盤ツール)
+- [注意事項](#注意事項)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 

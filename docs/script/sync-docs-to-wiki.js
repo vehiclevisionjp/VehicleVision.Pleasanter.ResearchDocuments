@@ -59,6 +59,15 @@ function getCategoryLabel(dirName) {
 }
 
 /**
+ * カテゴリディレクトリ名から先頭の連番を取得（整数）
+ * 例: "01-認証・権限" → 1
+ */
+function getCategoryNumber(dirName) {
+  const match = dirName.match(/^(\d+)/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
  * docs/research/ 配下の Markdown ファイルを再帰的に取得
  */
 function getMarkdownFiles(dir, basePath = '') {
@@ -108,6 +117,16 @@ function getDocLabel(relativePath) {
 }
 
 /**
+ * ファイル名から先頭の連番を取得（整数）
+ * 例: "001-Upsert-API.md" → 1
+ */
+function getDocNumber(relativePath) {
+  const baseName = path.basename(relativePath, '.md');
+  const match = baseName.match(/^(\d+)/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
  * ドキュメントファイルをカテゴリ別にグルーピングし、サイドバー用のリンクリストを生成
  */
 function buildGroupedDocsList(files) {
@@ -137,12 +156,14 @@ function buildGroupedDocsList(files) {
   const sortedCategories = Object.keys(groups).sort();
   for (const category of sortedCategories) {
     const label = getCategoryLabel(category);
+    const categoryNum = getCategoryNumber(category);
     lines.push('');
-    lines.push(`### ${label}`);
+    lines.push(`### ${categoryNum}. ${label}`);
     lines.push('');
     for (const file of groups[category]) {
+      const num = getDocNumber(file.relativePath);
       const title = getDocLabel(file.relativePath);
-      lines.push(`- [[${title}|${file.wikiTitle}]]`);
+      lines.push(`${num}. [[${title}|${file.wikiTitle}]]`);
     }
   }
 

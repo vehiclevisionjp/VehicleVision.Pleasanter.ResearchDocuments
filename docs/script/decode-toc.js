@@ -6,7 +6,8 @@
  * - インデントを2スペースから4スペースに変換（MD007対応）
  *
  * 使用方法:
- *   node docs/script/decode-toc.js
+ *   node docs/script/decode-toc.js           # 全ファイルを処理
+ *   node docs/script/decode-toc.js <file>    # 単一ファイルを処理
  */
 
 const fs = require("fs");
@@ -37,13 +38,23 @@ function collectMdFiles(dir, excludeDirs = []) {
     return results;
 }
 
-// docs配下の全.mdファイルを再帰的に収集（scriptディレクトリは除外）
-const files = collectMdFiles(docsDir, ["script"]);
-
-// ルートディレクトリのmdファイルも追加
-fs.readdirSync(rootDir)
-    .filter((f) => f.endsWith(".md"))
-    .forEach((f) => files.push(path.join(rootDir, f)));
+const targetFile = process.argv[2];
+let files;
+if (targetFile) {
+    const resolved = path.resolve(targetFile);
+    if (!fs.existsSync(resolved)) {
+        console.error(`File not found: ${resolved}`);
+        process.exit(1);
+    }
+    files = [resolved];
+} else {
+    // docs配下の全.mdファイルを再帰的に収集（scriptディレクトリは除外）
+    files = collectMdFiles(docsDir, ["script"]);
+    // ルートディレクトリのmdファイルも追加
+    fs.readdirSync(rootDir)
+        .filter((f) => f.endsWith(".md"))
+        .forEach((f) => files.push(path.join(rootDir, f)));
+}
 
 files.forEach((filePath) => {
     let content = fs.readFileSync(filePath, "utf8");

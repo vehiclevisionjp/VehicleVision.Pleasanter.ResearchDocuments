@@ -11,5 +11,13 @@
     "editor.formatOnSave": true
   },
   "editor.formatOnSave": true,
-  "files.eol": "\n"
+  "files.eol": "\n",
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "docs[/\\\\].*\\.md$",
+        "cmd": "node docs/script/toc-single.js \"${file}\""
+      }
+    ]
+  }
 }

@@ -39,6 +39,14 @@
     - [差分一覧](#差分一覧)
     - [移行時の注意点](#移行時の注意点)
     - [差分の概念図](#差分の概念図)
+- [Mermaid.js 対応の詳細調査](#mermaidjs-対応の詳細調査)
+    - [Mermaid.js の配置場所](#mermaidjs-の配置場所)
+    - [Mermaid.js の実際の利用箇所](#mermaidjs-の実際の利用箇所)
+    - [サーバーサイドの Mermaid テキスト生成](#サーバーサイドの-mermaid-テキスト生成)
+    - [PleasanterExtensions パラメータ](#pleasanterextensions-パラメータ)
+    - [Markdown フィールドとの関係](#markdown-フィールドとの関係)
+    - [アーキテクチャ図](#アーキテクチャ図)
+    - [結論（Mermaid 対応）](#結論mermaid-対応)
 - [結論](#結論)
 - [関連ソースコード](#関連ソースコード)
 
@@ -96,12 +104,16 @@ sequenceDiagram
 
 ### クライアントサイド
 
-| ライブラリ       | 用途                                   | インポート元                               |
-| ---------------- | -------------------------------------- | ------------------------------------------ |
-| **marked**       | Markdown → HTML 変換                   | `import { Marked } from 'marked'`          |
-| **DOMPurify**    | HTML サニタイズ（XSS 対策）            | `import DOMPurify from 'dompurify'`        |
-| **highlight.js** | コードブロックのシンタックスハイライト | `import hljs from 'highlight.js'`          |
-| **mermaid**      | Mermaid 図のレンダリング（Extension）  | `wwwroot/Extensions/mermaid-11.9.0.min.js` |
+| ライブラリ       | 用途                                   | インポート元                        |
+| ---------------- | -------------------------------------- | ----------------------------------- |
+| **marked**       | Markdown → HTML 変換                   | `import { Marked } from 'marked'`   |
+| **DOMPurify**    | HTML サニタイズ（XSS 対策）            | `import DOMPurify from 'dompurify'` |
+| **highlight.js** | コードブロックのシンタックスハイライト | `import hljs from 'highlight.js'`   |
+
+> **補足**: `wwwroot/Extensions/mermaid-11.9.0.min.js`（Mermaid.js v11.9.0）が配置されているが、
+> これは Site Visualizer（サイト設定可視化ツール）の ER 図描画専用であり、
+> Markdown フィールドの `markdownField.ts` からは参照・使用されていない。
+> 詳細は「[Mermaid.js 対応の詳細調査](#mermaidjs-対応の詳細調査)」を参照。
 
 ### サーバーサイド
 
@@ -664,6 +676,205 @@ graph LR
 
 ---
 
+## Mermaid.js 対応の詳細調査
+
+プリザンターの `wwwroot/Extensions/` ディレクトリには `mermaid-11.9.0.min.js` が配置されている。このライブラリが Markdown フィールドで利用可能かどうかを詳しく調査した。
+
+### Mermaid.js の配置場所
+
+```text
+Implem.Pleasanter/
+└── wwwroot/
+    └── Extensions/
+        ├── mermaid-11.9.0.min.js   ← Mermaid.js v11.9.0（minified）
+        └── smt-json-to-table.html  ← Site Visualizer の HTML
+```
+
+`wwwroot/Extensions/` は `Startup.cs` の `app.UseStaticFiles()` により静的ファイルとして公開される。
+しかし、通常のプリザンター画面に**自動注入する仕組みは存在しない**。
+「ExtensionScript」のような拡張スクリプト自動注入の機能は C# コードにも `.cshtml` にも実装されていない。
+
+### Mermaid.js の実際の利用箇所
+
+Mermaid.js が読み込まれるのは **Site Visualizer（サイト設定可視化ツール）の 1 ページのみ**である。
+
+#### Site Visualizer とは
+
+Site Visualizer は、プリザンターのサイト設定（テーブル定義・リンク構成）を**ER 図として可視化**する管理機能である。
+
+| 項目           | 内容                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------- |
+| アクセス URL   | `/items/{id}/VisualizeSettings?viewer=html`                                            |
+| ルーティング   | `ItemsController.VisualizeSettings()` → `SiteManagement.Utilities.VisualizeSettings()` |
+| HTML ファイル  | `wwwroot/Extensions/smt-json-to-table.html`                                            |
+| ライセンス制御 | `Parameters.PleasanterExtensions?.SiteVisualizer?.Disabled` で無効化可能               |
+
+#### mermaid.js の読み込み（smt-json-to-table.html 内）
+
+```html
+<!-- Site Visualizer HTML内でのみ読み込み -->
+<script {{nonce}} src="{{ApplicationPath}}Extensions/mermaid-11.9.0.min.js"></script>
+```
+
+#### mermaid.js の初期化・描画（smt-json-to-table.html 内の JavaScript）
+
+```javascript
+// ER図のレンダリング
+if (erTables.length) {
+    mermaid.initialize({ startOnLoad: false });
+    mermaid
+        .render('erDiagramSvg', mermaidText)
+        .then(({ svg }) => {
+            renderArea.innerHTML = svg;
+            this.fitToContainer();
+        })
+        .catch((e) => {
+            renderArea.innerHTML = `<span style="color:red;">${t('erd_mermaid_error', e.message)}</span>`;
+        });
+}
+```
+
+#### Mermaid テキストの生成（クライアントサイド）
+
+`smt-json-to-table.html` 内の JavaScript が、サイト設定 JSON データから Mermaid の `erDiagram` テキストを動的生成する:
+
+```javascript
+toMermaid(tables) {
+    let lines = ['erDiagram'];
+    tables.forEach(table => {
+        lines.push(`    TBL_${table.SiteId}["${table.Title}(${table.SiteId})"] {`);
+        // PK/FK カラムを列挙
+        lines.push(`    }`);
+    });
+    tables.forEach(table => {
+        // FK リレーションを Mermaid ER 記法で出力
+        lines.push(`    TBL_${parentSiteId} |o--o{ TBL_${table.SiteId} : ""`);
+    });
+    return lines.join('\n');
+}
+```
+
+### サーバーサイドの Mermaid テキスト生成
+
+`Json2MermaidConvertor` クラスが、サイト設定データを `.mmd`（Mermaid）ファイルとしてエクスポートする機能を提供する。
+
+#### Json2MermaidConvertor.cs
+
+```csharp
+// Implem.Pleasanter/Libraries/SiteManagement/Json2MermaidConvertor.cs
+internal class Json2MermaidConvertor
+{
+    internal static (string mermaidText, bool flowControl) Convert(SettingsJsonConverter dump)
+    {
+        if (dump?.ERDiagrams?.Tables == null) return (null, false);
+        var stringBuilder = new System.Text.StringBuilder();
+        stringBuilder.Append("erDiagram\n");
+        foreach (var table in dump.ERDiagrams.Tables)
+        {
+            stringBuilder.Append(ConvertTable(table));  // テーブル定義
+        }
+        foreach (var table in dump.ERDiagrams.Tables)
+        {
+            stringBuilder.Append(ConvertRelation(table));  // リレーション定義
+        }
+        return (stringBuilder.ToString(), true);
+    }
+}
+```
+
+#### エクスポート処理（SiteManagement/Utilities.cs）
+
+```csharp
+// ExportType=mermaid の場合
+else if (exportType == "mermaid")
+{
+    var (mermaidText, flowControl) = Json2MermaidConvertor.Convert(dump);
+    if (flowControl)
+    {
+        var mem = new MemoryStream(mermaidText.ToBytes(), false);
+        return new ResponseFile(
+            fileContent: mem,
+            fileDownloadName: ExportUtilities.FileName(
+                context: context,
+                title: "VisualizeSettings",
+                extension: "mmd"),  // .mmd 拡張子でダウンロード
+            contentType: "application/zip");
+    }
+}
+```
+
+Site Visualizer は 3 種類のエクスポート形式をサポートする:
+
+| エクスポート形式 | 出力                                     |
+| ---------------- | ---------------------------------------- |
+| `json`           | サイト設定 JSON ファイル                 |
+| `xlsx`           | Excel/ZIP ファイル                       |
+| `mermaid`        | `.mmd` ファイル（Mermaid ER 図テキスト） |
+
+### PleasanterExtensions パラメータ
+
+```csharp
+// Implem.ParameterAccessor/Parts/PleasanterExtensions.cs
+public class PleasanterExtensions
+{
+    public class SiteVisualizerData
+    {
+        public bool Disabled { get; set; } = false;       // 機能の無効化
+        public int ErdLinkDepth { get; set; } = 10;       // ER図のリンク探索深度
+        public int ErdLinkLimit { get; set; } = 60;       // ER図のリンク数上限
+    }
+    public SiteVisualizerData SiteVisualizer = new();
+}
+```
+
+### Markdown フィールドとの関係
+
+Mermaid.js は Markdown フィールド（`<markdown-field>` Web Component）とは**完全に独立**している。
+
+| 観点                                | 状況                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `markdownField.ts` での参照         | **なし** — mermaid に関する import / require / 参照は一切存在しない                        |
+| `marked.js` の拡張設定              | **なし** — Mermaid コードブロック用のカスタムレンダラーは未定義                            |
+| Markdown 内での ` ```mermaid ` 記述 | 通常のコードブロックとして表示される（フェンスドコードブロック + 言語名 "mermaid"）        |
+| highlight.js での扱い               | mermaid は highlight.js の対応言語に含まれないため、`highlightAuto` で近似言語が推定される |
+| DOMPurify の影響                    | 仮に Mermaid が SVG を生成しても、DOMPurify でサニタイズされる可能性がある                 |
+
+### アーキテクチャ図
+
+````text
+┌──────────────────────────────────────────────────────────────┐
+│  通常のプリザンター画面                                      │
+│  ┌───────────────────────────┐                               │
+│  │ <markdown-field>          │  marked.js + DOMPurify        │
+│  │ Markdown → HTML 変換      │  ※ mermaid.js は読み込まれない │
+│  │ ```mermaid → コードブロック │                               │
+│  └───────────────────────────┘                               │
+├──────────────────────────────────────────────────────────────┤
+│  Site Visualizer（/items/{id}/VisualizeSettings?viewer=html）│
+│  ┌───────────────────────────────────────────┐               │
+│  │ smt-json-to-table.html                    │               │
+│  │ ┌────────────────┐  ┌───────────────────┐ │               │
+│  │ │ JSON データ     │→│ mermaid.render()  │ │               │
+│  │ │ (ER Diagrams)   │  │ → SVG ER 図描画  │ │               │
+│  │ └────────────────┘  └───────────────────┘ │               │
+│  └───────────────────────────────────────────┘               │
+│  ※ mermaid-11.9.0.min.js はこのページのみで読み込み         │
+├──────────────────────────────────────────────────────────────┤
+│  API エクスポート（ExportType=mermaid）                       │
+│  Json2MermaidConvertor → .mmd ファイルダウンロード           │
+│  ※ サーバーサイドで Mermaid テキスト生成のみ（描画なし）     │
+└──────────────────────────────────────────────────────────────┘
+````
+
+### 結論（Mermaid 対応）
+
+- **Markdown フィールドでは Mermaid 図は描画されない**。コードブロックに `mermaid` 言語を指定しても、テキストとして表示されるのみ
+- `mermaid-11.9.0.min.js` は **Site Visualizer（サイト設定可視化）の ER 図描画専用**で配置されている
+- `Json2MermaidConvertor` は **サイト設定の ER 図を `.mmd` ファイルとしてエクスポート**するためのサーバーサイドコンバーター
+- Markdown フィールドで Mermaid 対応を実現するには、`markdownField.ts` に Mermaid 拡張を追加し、`marked.js` のカスタムレンダラーで `mermaid` 言語のコードブロックを処理する実装が必要になる
+
+---
+
 ## 結論
 
 | 項目                     | 内容                                                                    |
@@ -679,6 +890,7 @@ graph LR
 | 生 HTML サポート         | なし（セキュリティのためエスケープ）                                    |
 | 画像サポート             | あり（アップロード・貼り付け・カメラ撮影対応、`AllowImage` 設定で制御） |
 | ビューア切替             | Auto / Manual / Disabled の 3 モード                                    |
+| Mermaid 対応             | **Markdown フィールドでは非対応**（Site Visualizer の ER 図描画専用）   |
 
 ---
 
@@ -696,3 +908,8 @@ graph LR
 | `Implem.Pleasanter/Libraries/Settings/Column.cs`                                         | カラム設定（`ViewerSwitchingType`, `AllowImage`, `FieldCss`） |
 | `Implem.Pleasanter/Implem.Pleasanter.csproj`                                             | NuGet 依存関係（Markdown ライブラリなし）                     |
 | `Implem.Pleasanter/Startup.cs`                                                           | X-XSS-Protection ヘッダー設定                                 |
+| `Implem.Pleasanter/wwwroot/Extensions/mermaid-11.9.0.min.js`                             | Mermaid.js ライブラリ（Site Visualizer 専用）                 |
+| `Implem.Pleasanter/wwwroot/Extensions/smt-json-to-table.html`                            | Site Visualizer HTML（Mermaid ER 図描画）                     |
+| `Implem.Pleasanter/Libraries/SiteManagement/Json2MermaidConvertor.cs`                    | サイト設定 → Mermaid ER 図テキスト変換                        |
+| `Implem.Pleasanter/Libraries/SiteManagement/Utilities.cs`                                | Site Visualizer のエントリポイント                            |
+| `Implem.ParameterAccessor/Parts/PleasanterExtensions.cs`                                 | Site Visualizer パラメータ設定                                |

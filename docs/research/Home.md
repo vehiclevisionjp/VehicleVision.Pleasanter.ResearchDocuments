@@ -65,13 +65,17 @@
 
 ### 05. 基盤・ツール
 
-| #   | ドキュメント                                                                                                | 説明                                               | 調査日     |
-| --- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ---------- |
-| 001 | [CodeDefiner データベース作成・更新ロジック](05-基盤・ツール/001-CodeDefiner-DB作成更新.md)                 | CodeDefiner の DB 作成・更新と RDBMS 差違          | 2026-02-10 |
-| 002 | [拡張ライブラリ（ExtendedLibrary）の仕様と使い方](05-基盤・ツール/002-拡張ライブラリ.md)                    | ExtendedLibrary の仕組み・DLL 読み込み影響         | 2026-02-12 |
-| 003 | [多言語対応（i18n）の実装](05-基盤・ツール/003-多言語対応.md)                                               | DisplayAccessor・言語切り替え・CodeDefiner         | 2026-02-12 |
-| 004 | [SMTP OAuth 2.0 対応](05-基盤・ツール/004-SMTP-OAuth対応.md)                                                | SMTP OAuth 2.0 認証・M365/GWS 設定例               | 2026-02-12 |
-| 005 | [CodeDefiner パラメータマージ（merge）の問題点と代替案](05-基盤・ツール/005-CodeDefiner-Parameterマージ.md) | CodeDefiner merge コマンドの問題点・代替アプローチ | 2026-02-23 |
+| #   | ドキュメント                                                                                                | 説明                                                              | 調査日     |
+| --- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---------- |
+| 001 | [CodeDefiner データベース作成・更新ロジック](05-基盤・ツール/001-CodeDefiner-DB作成更新.md)                 | CodeDefiner の DB 作成・更新と RDBMS 差違                         | 2026-02-10 |
+| 002 | [拡張ライブラリ（ExtendedLibrary）の仕様と使い方](05-基盤・ツール/002-拡張ライブラリ.md)                    | ExtendedLibrary の仕組み・DLL 読み込み影響                        | 2026-02-12 |
+| 003 | [多言語対応（i18n）の実装](05-基盤・ツール/003-多言語対応.md)                                               | DisplayAccessor・言語切り替え・CodeDefiner                        | 2026-02-12 |
+| 004 | [SMTP OAuth 2.0 対応](05-基盤・ツール/004-SMTP-OAuth対応.md)                                                | SMTP OAuth 2.0 認証・M365/GWS 設定例                              | 2026-02-12 |
+| 005 | [CodeDefiner パラメータマージ（merge）の問題点と代替案](05-基盤・ツール/005-CodeDefiner-Parameterマージ.md) | CodeDefiner merge コマンドの問題点・代替アプローチ                | 2026-02-23 |
+| 006 | [ServerScript 実装](05-基盤・ツール/006-ServerScript実装.md)                                                | ClearScript V8 統合・スクリプト実行フロー・ホストオブジェクト一覧 | 2026-02-23 |
+| 007 | [ServerScript Python 対応の実現可能性調査](05-基盤・ツール/007-ServerScript-Python対応.md)                  | Python エンジン選定・SiteId 単位切替設計・実装方針                | 2026-02-23 |
+| 008 | [IronPython 3 サンドボックス実装ガイド](05-基盤・ツール/008-IronPythonサンドボックス.md)                    | IronPython 3 の OS 操作ブロック・多層防御・.NET interop 制御      | 2026-02-23 |
+| 009 | [C# Script（Roslyn Scripting API）対応の実現可能性調査](05-基盤・ツール/009-CSharpScript-Roslyn対応.md)     | Roslyn Scripting API のサンドボックス可否・V8/IronPython 比較     | 2026-02-23 |
 
 ## 注意事項
 

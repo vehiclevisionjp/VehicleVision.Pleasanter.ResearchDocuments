@@ -33,6 +33,13 @@
     - [ViewerSwitchingTypes（ビューア切替モード）](#viewerswitchingtypesビューア切替モード)
     - [data 属性によるクライアント設定](#data-属性によるクライアント設定)
 - [コードブロックのシンタックスハイライト](#コードブロックのシンタックスハイライト)
+    - [ライブラリ情報](#ライブラリ情報)
+    - [インポート方式と対応言語](#インポート方式と対応言語)
+    - [レンダリングフロー](#レンダリングフロー)
+    - [生成される HTML 構造](#生成される-html-構造)
+    - [コードコピー機能](#コードコピー機能)
+    - [スタイル定義](#スタイル定義)
+    - [Notes モードでの扱い](#notes-モードでの扱い)
 - [画像アップロード](#画像アップロード)
 - [GitHub Flavored Markdown（GFM）との機能差分](#github-flavored-markdowngfmとの機能差分)
     - [前提条件](#前提条件)
@@ -476,24 +483,245 @@ public enum ViewerSwitchingTypes
 
 ## コードブロックのシンタックスハイライト
 
-`markdownField.ts` の `mdRenderCode()` メソッドで highlight.js を使用。
+### ライブラリ情報
+
+| 項目         | 内容                                                                  |
+| ------------ | --------------------------------------------------------------------- |
+| ライブラリ   | highlight.js                                                          |
+| バージョン   | ^11.11.1（`package.json` の dependencies）                            |
+| インポート   | `import hljs from 'highlight.js'`                                     |
+| テーマ       | `highlight.js/styles/github-dark.css`（Vite の `?inline` で読み込み） |
+| バンドル方式 | Vite でバンドル（`node_modules` は `vendor` チャンクに分離）          |
+
+### インポート方式と対応言語
+
+```typescript
+// markdownField.ts
+import hljs from 'highlight.js';
+import highlightStyle from 'highlight.js/styles/github-dark.css?inline';
+```
+
+`import hljs from 'highlight.js'` は highlight.js v11 の**デフォルトエクスポート**を使用している。
+highlight.js v11 では、デフォルトインポートは **common subset（一般的な約 40 言語）** を含む。
+全言語（約 190 言語）をバンドルする場合は
+`import hljs from 'highlight.js/lib/core'` + 個別登録が必要だが、プリザンターはそのパターンを使用していない。
+
+#### common subset に含まれる主要言語
+
+highlight.js v11 の common subset には以下の言語が含まれる
+（完全なリストは [highlight.js公式ドキュメント](https://highlightjs.org/download) を参照）:
+
+| カテゴリ     | 言語                                                                     |
+| ------------ | ------------------------------------------------------------------------ |
+| Web          | JavaScript, TypeScript, HTML/XML, CSS, JSON, YAML                        |
+| サーバー     | C#, Java, Python, Ruby, Go, Rust, PHP, Kotlin, Swift                     |
+| システム     | C, C++, Objective-C                                                      |
+| スクリプト   | Bash/Shell, PowerShell, Perl                                             |
+| データベース | SQL                                                                      |
+| マークアップ | Markdown, LaTeX                                                          |
+| その他       | Diff, Makefile, TOML, INI, Dockerfile, GraphQL, Wasm, R, Lua, SCSS, Less |
+
+> **注意**: `mermaid` は highlight.js の対応言語に含まれないため、
+> ` ```mermaid ` コードブロックは `highlightAuto` による自動推定が適用される。
+
+### レンダリングフロー
+
+`marked.js` のカスタムレンダラー `mdRenderCode()` がコードブロックの
+HTML 生成を担当する:
 
 ```typescript
 private mdRenderCode = (token: Tokens.Code) => {
     const lang = (token.lang || '').trim();
     let highlighted: string;
+    // 1. 言語指定あり & highlight.js が対応 → 指定言語でハイライト
     if (lang && hljs.getLanguage(lang)) {
         highlighted = hljs.highlight(token.text, { language: lang }).value;
+    // 2. 言語未指定 or 非対応言語 → 自動検出
     } else {
         highlighted = hljs.highlightAuto(token.text).value;
     }
-    // コピーボタン付きのコードブロック HTML を生成
+    // 3. コピーボタン付きのコードブロック HTML を生成
+    return `<div class="md-code-block">
+                <button class="md-code-copy">
+                    <span class="md-btn-icon material-symbols-outlined">content_copy</span>
+                    <pre class="md-code-copy-item" name="copy_data">${this.escapeHtml(token.text)}</pre>
+                </button>
+                <div class="md-code-copied">Copied!</div>
+                <pre><code class="hljs ${lang ? `language-${lang}` : ''}">${highlighted}</code></pre>
+            </div>`;
 };
 ```
 
-- 言語指定があれば指定言語でハイライト
-- 言語指定がなければ自動検出（`highlightAuto`）
-- コピーボタンが付与される
+#### 処理の分岐
+
+```text
+コードブロック検出（marked.js が token.lang を解析）
+  │
+  ├─ lang あり & hljs.getLanguage(lang) が truthy
+  │   → hljs.highlight(text, { language: lang }) で明示的ハイライト
+  │
+  └─ lang なし or hljs.getLanguage(lang) が falsy
+      → hljs.highlightAuto(text) で自動推定ハイライト
+```
+
+| 条件                      | API                    | 動作                                             |
+| ------------------------- | ---------------------- | ------------------------------------------------ |
+| 言語指定あり & 対応言語   | `hljs.highlight()`     | 指定言語の文法でハイライト                       |
+| 言語指定あり & 非対応言語 | `hljs.highlightAuto()` | common subset 全言語からヒューリスティックに推定 |
+| 言語指定なし              | `hljs.highlightAuto()` | 同上                                             |
+
+> **`highlightAuto` の注意点**: 自動検出はコードの内容からスコアリングで言語を推定するため、
+> 短いコードや特徴の少ないコードでは誤検出する可能性がある。
+> GitHub では言語未指定時にハイライトを行わないが、プリザンターは常に自動推定を試みる。
+
+### 生成される HTML 構造
+
+```html
+<div class="md-code-block">
+    <!-- コピーボタン（右上に配置） -->
+    <button class="md-code-copy">
+        <span class="md-btn-icon material-symbols-outlined">content_copy</span>
+        <!-- コピー用の生テキスト（非表示） -->
+        <pre class="md-code-copy-item" name="copy_data">
+            （エスケープされた元のコードテキスト）
+        </pre>
+    </button>
+    <!-- コピー完了メッセージ（通常非表示） -->
+    <div class="md-code-copied">Copied!</div>
+    <!-- ハイライト済みコードブロック -->
+    <pre><code class="hljs language-javascript">
+        （highlight.js によりハイライトされた HTML）
+    </code></pre>
+</div>
+```
+
+### コードコピー機能
+
+コードブロックにはコピーボタンが付属しており、`Clipboard API` を使用してコードをクリップボードにコピーする。
+
+```typescript
+private copyCodeBlock = (event: Event) => {
+    const path = event.composedPath();
+    if ((path[0] as HTMLElement).classList.contains('md-code-copy')) {
+        event.stopPropagation();
+        const buttonNode = path[0] as HTMLImageElement;
+        const wrap = buttonNode.closest('.md-code-block');
+        // コピー用テキストは escapeHtml() された状態で格納されており、
+        // decodeURIComponent で復元してからクリップボードに書き込む
+        const code = decodeURIComponent(
+            buttonNode.querySelector('.md-code-copy-item')?.textContent || ''
+        );
+        navigator.clipboard.writeText(code);
+        // 1.5秒間「Copied!」表示
+        wrap?.classList.add('is-copied');
+        setTimeout(() => wrap?.classList.remove('is-copied'), 1500);
+    }
+};
+```
+
+| 動作               | 実装                                                         |
+| ------------------ | ------------------------------------------------------------ |
+| コピー対象テキスト | `escapeHtml()` されたテキストを `decodeURIComponent` で復元  |
+| コピー API         | `navigator.clipboard.writeText()`                            |
+| コピー完了表示     | `.is-copied` クラス付与で「Copied!」を 1.5 秒表示            |
+| イベント伝播       | `event.stopPropagation()` でビューアのクリックイベントを阻止 |
+| トリガー           | `onViewerClick` 内で `copyCodeBlock()` を呼び出し            |
+
+### スタイル定義
+
+#### highlight.js テーマ（github-dark.css）
+
+```typescript
+// markdownField.ts の initStyle()
+private initStyle() {
+    if (MarkdownFieldElement.isStyleAppended) return;
+    const style = document.createElement('style');
+    style.textContent = styleCode + highlightStyle;  // SCSS + highlight.js CSS を結合
+    document.head.appendChild(style);
+    MarkdownFieldElement.isStyleAppended = true;
+}
+```
+
+テーマの CSS は Vite の `?inline` サフィックスにより文字列としてインポートされ、
+`<style>` タグとして `<head>` に 1 回だけ挿入される（`isStyleAppended` フラグで重複防止）。
+
+#### コードブロックのカスタムスタイル（style.scss + markdownField.scss）
+
+**style.scss** ではコードブロック全体のスタイルを定義:
+
+```scss
+.md {
+    code {
+        padding: 2px 4px;
+        font-family: inherit;
+        background-color: var(--base-dark-layer);
+        border-radius: 4px;
+    }
+    pre {
+        margin: 0;
+        color: var(--nonColor16);
+        white-space: pre;
+        background: var(--nonColor02);
+        border-radius: 4px;
+        > code.hljs {
+            padding: 1.2em 1em;
+            font-family: Consolas, 'Courier New', monospace;
+            font-size: 1.2em;
+            border-radius: 0;
+            // スクロールバーのカスタマイズ...
+        }
+    }
+}
+```
+
+**markdownField.scss** ではコピーボタンの配置・表示を制御:
+
+```scss
+.md-code-block {
+    position: relative;
+    float: none;
+    margin: 1em 0;
+
+    .md-code-copy {
+        position: absolute; // 右上に絶対配置
+        top: 0;
+        right: 0;
+        z-index: 1;
+        // Material Symbols フォントアイコン使用
+    }
+
+    .md-code-copied {
+        display: none; // 通常は非表示
+    }
+
+    &.is-copied {
+        .md-code-copy {
+            display: none;
+        } // コピー後はボタンを隠す
+        .md-code-copied {
+            display: block;
+        } // 「Copied!」を表示
+    }
+}
+```
+
+### Notes モードでの扱い
+
+Notes モード（`[md]` プレフィックスなし）では、コードブロックは `notesRender()` の
+`default` ケースに該当し、`token.raw`（生のテキスト）がそのまま返される。
+**highlight.js によるハイライトは行われない。**
+
+```typescript
+private notesRender = (token: Token): string => {
+    switch (token.type) {
+        case 'link':  return this.mdRenderLink(token as Tokens.Link);
+        case 'image': return this.mdRenderImage(token as Tokens.Image);
+        // ... (text, paragraph, space, br, escape)
+        default:
+            return token.raw;  // コードブロックはここに該当
+    }
+};
+```
 
 ---
 

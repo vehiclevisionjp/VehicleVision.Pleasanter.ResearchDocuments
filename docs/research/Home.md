@@ -79,6 +79,8 @@
 | 007 | [ServerScript Python 対応の実現可能性調査](05-基盤・ツール/007-ServerScript-Python対応.md)                  | Python エンジン選定・SiteId 単位切替設計・実装方針                | 2026-02-23 |
 | 008 | [IronPython 3 サンドボックス実装ガイド](05-基盤・ツール/008-IronPythonサンドボックス.md)                    | IronPython 3 の OS 操作ブロック・多層防御・.NET interop 制御      | 2026-02-23 |
 | 009 | [C# Script（Roslyn Scripting API）対応の実現可能性調査](05-基盤・ツール/009-CSharpScript-Roslyn対応.md)     | Roslyn Scripting API のサンドボックス可否・V8/IronPython 比較     | 2026-02-23 |
+| 010 | [添付ファイルのウイルススキャン手法](05-基盤・ツール/010-添付ファイルウイルススキャン.md)                   | ClamAV・AMSI・VirusTotal 等のスキャン手法と Pleasanter 統合方針   | 2026-02-24 |
+| 011 | [添付ファイルウイルススキャン実装行程](05-基盤・ツール/011-添付ファイルウイルススキャン実装行程.md)         | ClamAV 統合の具体的な改修箇所・手順・ON/OFF 制御設計              | 2026-02-24 |
 
 ## 注意事項
 

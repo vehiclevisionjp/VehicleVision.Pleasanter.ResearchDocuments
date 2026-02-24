@@ -278,6 +278,8 @@ public static ContentResultInheritance UpdateSiteSettingsByApi(
 新しいリサーチドキュメントを作成する際のチェックリスト：
 
 - [ ] ファイル名が命名規則に従っている
+- [ ] 工数見積は含まれていない
+- [ ] mermaidで記載可能な図はmermaidで記載されている
 - [ ] doctoc マーカーが含まれている
 - [ ] 調査日が記載されている
 - [ ] 調査対象バージョンが記載されている

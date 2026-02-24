@@ -9,7 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 
 // 環境変数の取得
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -225,7 +225,10 @@ function createOrUpdateWikiPage(title, content, wikiDir) {
   fs.writeFileSync(filePath, content, 'utf-8');
 
   // Gitに追加
-  execSync(`cd "${wikiDir}" && git add "${fileName}"`, { stdio: 'pipe' });
+  const addResult = spawnSync('git', ['add', fileName], { cwd: wikiDir, stdio: 'pipe' });
+  if (addResult.status !== 0) {
+    throw new Error(`Command failed: git add "${fileName}"\n${addResult.stderr.toString()}`);
+  }
 
   if (exists) {
     console.log(`✅ 更新: ${title}`);
@@ -293,7 +296,10 @@ function deleteWikiPages(wikiDir, pagesToDelete) {
     const filePath = path.join(wikiDir, fileName);
 
     if (fs.existsSync(filePath)) {
-      execSync(`cd "${wikiDir}" && git rm "${fileName}"`, { stdio: 'pipe' });
+      const rmResult = spawnSync('git', ['rm', fileName], { cwd: wikiDir, stdio: 'pipe' });
+      if (rmResult.status !== 0) {
+        throw new Error(`Command failed: git rm "${fileName}"\n${rmResult.stderr.toString()}`);
+      }
       console.log(`🗑️  削除: ${pageTitle}`);
       deletedCount++;
     }

@@ -150,7 +150,11 @@
 | Mermaid（` ```mermaid ` コードブロック） |   **No**   |  Yes   | **No** | **No** | **No** |  Yes   |
 | PlantUML                                 |   **No**   | **No** | **No** | **No** | **No** |  Yes   |
 
-> **補足**: Pleasanter には `mermaid-11.9.0.min.js` が配置されているが、これは Site Visualizer（ER 図描画）専用であり、Markdown フィールドでは利用されない。詳細は [008-Markdown実装.md](008-Markdown実装.md) の「Mermaid.js 対応の詳細調査」セクションを参照。
+> **補足**: Pleasanter には `mermaid-11.9.0.min.js` が配置されているが、
+> これは Site Visualizer（ER 図描画）専用であり、
+> Markdown フィールドでは利用されない。
+> 詳細は [008-Markdown実装.md](008-Markdown実装.md) の
+> 「Mermaid.js 対応の詳細調査」セクションを参照。
 
 ### 脚注・注釈
 

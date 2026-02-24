@@ -740,13 +740,13 @@ IronPython エンジン起動
   ▼
 ユーザースクリプト実行
   │
-  ├─ ✅ model.ClassA = 'test'      （値操作 → 許可）
-  ├─ ✅ v = math.floor(model.NumA) （安全モジュール → 許可）
-  ├─ ✅ items.Get(123)             （ホストAPI → 許可）
-  ├─ ❌ import os                   （ブロックモジュール → ImportError）
-  ├─ ❌ open('/etc/passwd')         （builtins除去済 → NameError）
-  ├─ ❌ import clr                  （sys.modules=None → ImportError）
-  └─ ❌ exec('...')                 （builtins除去済 → NameError）
+  ├─ model.ClassA = 'test'      （値操作 → 許可）
+  ├─ v = math.floor(model.NumA) （安全モジュール → 許可）
+  ├─ items.Get(123)             （ホストAPI → 許可）
+  ├─ import os                   （ブロックモジュール → ImportError）
+  ├─ open('/etc/passwd')         （builtins除去済 → NameError）
+  ├─ import clr                  （sys.modules=None → ImportError）
+  └─ exec('...')                 （builtins除去済 → NameError）
 ```
 
 #### ユーザースクリプトから見える世界
@@ -1019,7 +1019,6 @@ sequenceDiagram
 | 主要な技術リスク        | **サンドボックス**: V8 と異なり OS 操作が原理的に可能。「値操作のみ許可」の原則に基づく4層ロックダウン + 継続的な脆弱性検証が必要 |
 | ClearScript 固有依存    | `ServerScriptFile.cs` / `ServerScriptCsv.cs` の 2ファイルに限定。解消可能                                                         |
 | CodeDefiner への影響    | なし（言語切替は実行時判定のため、自動生成テンプレートの変更不要）                                                                |
-| 概算工数                | 約 20.5 人日（Phase 1〜3、サンドボックス実装・テスト含む）                                                                        |
 | FormulaServerScript     | 初期リリースでは対象外（JS のみ維持）。将来課題                                                                                   |
 
 ---

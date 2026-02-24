@@ -537,8 +537,8 @@ flowchart TD
     Import["import os"] --> Check{"ビルトインモジュール？"}
     Check -->|Yes| Direct["C# 実装を直接ロード<br/>（PAL を経由しない）"]
     Check -->|No| PAL["PlatformAdaptationLayer<br/>でファイル検索"]
-    PAL --> Block["❌ SandboxPAL でブロック"]
-    Direct --> Loaded["✅ ロード成功<br/>（PAL では防げない）"]
+    PAL --> Block["SandboxPAL でブロック"]
+    Direct --> Loaded["ロード成功<br/>（PAL では防げない）"]
 
     style Block fill:#ff9999
     style Loaded fill:#ffff99
@@ -626,7 +626,7 @@ for mod in _blocked_modules:
 
 ```mermaid
 flowchart LR
-    subgraph Critical["🔴 Critical - 必須ブロック"]
+    subgraph Critical["Critical - 必須ブロック"]
         os["os"]
         subprocess["subprocess"]
         sys_mod["sys"]
@@ -648,7 +648,7 @@ flowchart LR
         sqlite3["sqlite3"]
     end
 
-    subgraph Medium["🟡 Medium - 推奨"]
+    subgraph Medium["Medium - 推奨"]
         http_mod["http"]
         urllib_mod["urllib"]
         webbrowser["webbrowser"]

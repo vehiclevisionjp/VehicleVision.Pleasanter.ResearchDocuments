@@ -327,14 +327,14 @@ public class BlockingSourceReferenceResolver : SourceReferenceResolver
 | `#r` ディレクティブ        | **可能**             | `BlockingMetadataReferenceResolver`    | アセンブリ動的追加を完全ブロック               |
 | `#load` ディレクティブ     | **可能**             | `BlockingSourceReferenceResolver`      | 外部スクリプト読込を完全ブロック               |
 | 自動 `using` インポート    | **可能**             | `WithImports` で制限                   | 自動インポートのみ制御                         |
-| 完全修飾名でのアクセス     | ❌ **不可能**        | （制御手段なし）                       | `System.IO.File.ReadAllText()` 等              |
-| `typeof().Assembly`        | ❌ **不可能**        | （制御手段なし）                       | 任意のアセンブリメタデータ取得                 |
-| リフレクション             | ❌ **不可能**        | （制御手段なし）                       | `Type.GetMethod()`, `Invoke()` 等              |
+| 完全修飾名でのアクセス     | **不可能**           | （制御手段なし）                       | `System.IO.File.ReadAllText()` 等              |
+| `typeof().Assembly`        | **不可能**           | （制御手段なし）                       | 任意のアセンブリメタデータ取得                 |
+| リフレクション             | **不可能**           | （制御手段なし）                       | `Type.GetMethod()`, `Invoke()` 等              |
 | `unsafe` コード            | **可能**             | `ScriptOptions.WithAllowUnsafe(false)` | デフォルトで無効                               |
-| `dynamic` キーワード       | ❌ **不可能**        | （制御手段なし）                       | DLR 経由で型チェック回避に利用可能             |
+| `dynamic` キーワード       | **不可能**           | （制御手段なし）                       | DLR 経由で型チェック回避に利用可能             |
 | P/Invoke（`DllImport`）    | △ 構文解析で検出可能 | SyntaxTree 検査                        | 完全ブロックは静的解析に依存                   |
-| 文字列からの型構築         | ❌ **不可能**        | （制御手段なし）                       | `Type.GetType("System.IO.File")` 等            |
-| `AppDomain` / プロセス分離 | ❌ **非対応**        | .NET 8+ で廃止                         | `AssemblyLoadContext` は型アクセスを制限しない |
+| 文字列からの型構築         | **不可能**           | （制御手段なし）                       | `Type.GetType("System.IO.File")` 等            |
+| `AppDomain` / プロセス分離 | **非対応**           | .NET 8+ で廃止                         | `AssemblyLoadContext` は型アクセスを制限しない |
 
 ---
 
@@ -895,10 +895,10 @@ public async Task ExecuteWithTimeout(string code, int timeoutMs)
 | OS API の存在            | なし（エンジン内に皆無） | あり（import で到達）         | あり（同一ランタイムに同居）                |
 | ファイル I/O ブロック    | 不要（API がない）       | import / PAL / clr で多層防御 | 構文木検査 + セマンティック検査             |
 | プロセス実行ブロック     | 不要（API がない）       | import / clr ブロック         | 構文木検査（バイパスリスクあり）            |
-| リフレクション防止       | 不要                     | clr import ブロック           | ❌ 完全防止は困難                           |
-| `typeof().Assembly`      | 不可能                   | 相当する操作を clr で制限     | ❌ 防止不可能                               |
-| 文字列→型構築のブロック  | 不要                     | `__import__` カスタム + clr   | ❌ `Type.GetType(string)` 防止困難          |
-| `dynamic` 経由の回避     | 不要                     | `.NET interop` ブロックで対応 | ❌ 制御困難                                 |
+| リフレクション防止       | 不要                     | clr import ブロック           | 完全防止は困難                              |
+| `typeof().Assembly`      | 不可能                   | 相当する操作を clr で制限     | 防止不可能                                  |
+| 文字列→型構築のブロック  | 不要                     | `__import__` カスタム + clr   | `Type.GetType(string)` 防止困難             |
+| `dynamic` 経由の回避     | 不要                     | `.NET interop` ブロックで対応 | 制御困難                                    |
 | 防御の確実性             | ★★★★★                    | ★★★☆☆                         | ★★☆☆☆                                       |
 | エスケープ（脱出）リスク | なし                     | 中（**subclasses** 等）       | **高**（リフレクション、dynamic）           |
 
@@ -984,7 +984,7 @@ var param = System.Linq.Expressions.Expression.Parameter(typeof(string));
 | リスク                         | 深刻度 | 対策の実現性              | 残存リスク               |
 | ------------------------------ | ------ | ------------------------- | ------------------------ |
 | リフレクションによる脱出       | **高** | △ 部分的に可能            | `dynamic` 経由で回避可能 |
-| `dynamic` による型チェック回避 | **高** | ❌ 完全対策不可           | ExpandoObject で必須     |
+| `dynamic` による型チェック回避 | **高** | 完全対策不可              | ExpandoObject で必須     |
 | CPU 無限ループ                 | 中     | △ スレッド強制終了        | `Thread.Abort` 廃止      |
 | メモリ枯渇                     | 中     | △ OS レベル制限           | プロセス内制限は困難     |
 | Expression Tree 動的生成       | 中     | ○ 名前空間ブロック        | 構文木検査で検出可能     |

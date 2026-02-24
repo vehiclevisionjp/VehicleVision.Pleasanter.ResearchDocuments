@@ -201,8 +201,8 @@ fileContent = SerializeWithIndent(
 
 ```mermaid
 flowchart LR
-    A["Rds.json<br/>✅ パッチ適用済"] --> B["Security.json<br/>✅ パッチ適用済"]
-    B --> C["Api.json<br/>❌ 例外発生"]
+    A["Rds.json<br/>パッチ適用済"] --> B["Security.json<br/>パッチ適用済"]
+    B --> C["Api.json<br/>例外発生"]
     C --> D["Mail.json<br/>⬜ 未適用"]
     D --> E["不整合状態"]
 ```
@@ -310,8 +310,8 @@ flowchart LR
         A["v1.4.0"] -->|"パッチあり"| B["v1.4.1"]
         B -->|"パッチあり"| C["v1.5.0"]
         C -->|"パッチあり"| D["v1.5.1"]
-        A -.->|"❌ 直接移行不可"| D
-        D -.->|"❌ ダウングレード不可"| B
+        A -.->|"直接移行不可"| D
+        D -.->|"ダウングレード不可"| B
     end
 ```
 
@@ -332,7 +332,10 @@ flowchart LR
 
 ### 案A: C# デフォルト値 + 部分 JSON 方式
 
-C# クラス側にデフォルト値を整備し、ユーザーは変更したいプロパティのみを JSON に記載する運用に切り替える。JSON ファイルが存在しない場合は C# のデフォルト値だけで動作する。Override ディレクトリも別ファイルも不要で、現行の `Parameters/*.json` の中身を「変更分のみ」に縮小するだけで実現できる。
+C# クラス側にデフォルト値を整備し、ユーザーは変更したいプロパティのみを JSON に記載する運用に切り替える。
+JSON ファイルが存在しない場合は C# のデフォルト値だけで動作する。
+Override ディレクトリも別ファイルも不要で、
+現行の `Parameters/*.json` の中身を「変更分のみ」に縮小するだけで実現できる。
 
 #### 原理
 
@@ -426,16 +429,16 @@ Parameters.Rds = Read<Rds>(required: false) ?? new();
 
 プリザンター本体では C# クラスへのデフォルト値追加が既に部分的に進められている。
 
-| 状態      | クラス                                                                       | 備考                                                                                             |
-| --------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| ✅ 整備済 | `Script`                                                                     | 最も網羅的。`ServerScript = true`, `ServerScriptTimeOut = 10000` 等、`[DefaultValue]` 属性も併用 |
-| ✅ 整備済 | `General`（3プロパティのみ）                                                 | `ChoiceSplitRegexPattern` 等の正規表現プロパティ                                                 |
-| ✅ 整備済 | `Mail`（OAuth関連）                                                          | `UseOAuth = false`, `OAuthDefaultExpiresIn = 3600` 等                                            |
-| ✅ 整備済 | `SysLog`                                                                     | `EnableLoggingToDatabase = true`, `OutputErrorDetails = true`                                    |
-| ✅ 整備済 | `PleasanterExtensions`                                                       | `SiteVisualizer = new()` 、ネストクラスにもデフォルト値あり                                      |
-| ✅ 整備済 | `Quartz` のサブクラス                                                        | `QuartzClustering` がコンストラクタで初期値設定済                                                |
-| ✅ 整備済 | `Rds`（`Dbms` のみ）                                                         | `[OnDeserialized]` で `Dbms` 未指定時に `"SQLServer"` にフォールバック                           |
-| ⚠️ 未整備 | `Api`, `Authentication`, `Security`, `Service`, `Rds`（その他） 等約70クラス | デフォルト値なし。JSON の値が実質的なデフォルト                                                  |
+| 状態        | クラス                                                                       | 備考                                                                                             |
+| ----------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 整備済      | `Script`                                                                     | 最も網羅的。`ServerScript = true`, `ServerScriptTimeOut = 10000` 等、`[DefaultValue]` 属性も併用 |
+| 整備済      | `General`（3プロパティのみ）                                                 | `ChoiceSplitRegexPattern` 等の正規表現プロパティ                                                 |
+| 整備済      | `Mail`（OAuth関連）                                                          | `UseOAuth = false`, `OAuthDefaultExpiresIn = 3600` 等                                            |
+| 整備済      | `SysLog`                                                                     | `EnableLoggingToDatabase = true`, `OutputErrorDetails = true`                                    |
+| 整備済      | `PleasanterExtensions`                                                       | `SiteVisualizer = new()` 、ネストクラスにもデフォルト値あり                                      |
+| 整備済      | `Quartz` のサブクラス                                                        | `QuartzClustering` がコンストラクタで初期値設定済                                                |
+| 整備済      | `Rds`（`Dbms` のみ）                                                         | `[OnDeserialized]` で `Dbms` 未指定時に `"SQLServer"` にフォールバック                           |
+| 注意 未整備 | `Api`, `Authentication`, `Security`, `Service`, `Rds`（その他） 等約70クラス | デフォルト値なし。JSON の値が実質的なデフォルト                                                  |
 
 #### バージョンアップ・ダウングレード時の運用
 

@@ -520,16 +520,16 @@ BackgroundServerScript の管理 UI と同様に、テナント管理画面に W
 ```mermaid
 flowchart TD
     A[新規ファイル追加] --> B[WebhooksController.cs]
-    A --> C[WebhookAttributes.cs（フィルタ）]
-    A --> D[WebhookSetting.cs（設定モデル）]
-    A --> E[WebhookRateLimiter.cs（レートリミット）]
-    A --> F[ServerScriptModelWebhookRequest.cs（ホストオブジェクト）]
+    A --> C["WebhookAttributes.cs（フィルタ）"]
+    A --> D["WebhookSetting.cs（設定モデル）"]
+    A --> E["WebhookRateLimiter.cs（レートリミット）"]
+    A --> F["ServerScriptModelWebhookRequest.cs（ホストオブジェクト）"]
 
-    G[既存ファイル改修] --> H[TenantSettings.cs\nWebhookSettings プロパティ追加]
-    G --> I[ServerScriptModel.cs\nWebhookReceived 条件追加]
-    G --> J[ServerScriptModelUtilities.cs\nwebhookRequest オブジェクト登録]
-    G --> K[Startup.cs\nwebhooks/{guid} ルート追加]
-    G --> L[テナント管理画面\n設定 UI 追加]
+    G[既存ファイル改修] --> H["TenantSettings.cs<br/>WebhookSettings プロパティ追加"]
+    G --> I["ServerScriptModel.cs<br/>WebhookReceived 条件追加"]
+    G --> J["ServerScriptModelUtilities.cs<br/>webhookRequest オブジェクト登録"]
+    G --> K["Startup.cs<br/>webhooks/{guid} ルート追加"]
+    G --> L["テナント管理画面<br/>設定 UI 追加"]
 ```
 
 ---

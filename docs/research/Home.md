@@ -50,6 +50,7 @@
 | 004 | [Extensions テーブルの使用法](03-データ操作・API/004-Extensionsテーブル.md)                                  | Extensions テーブルの構造・API 操作                      | 2026-02-13 |
 | 005 | [SiteName 名前解決と GetClosestSiteId API](03-データ操作・API/005-SiteName名前解決とGetClosestSiteId-API.md) | SiteName による名前ベースのサイト識別と環境間移植        | 2026-02-24 |
 | 006 | [Webhook・iPaaS 連携の実現可能性調査](03-データ操作・API/006-Webhook・iPaaS連携の実現可能性調査.md)          | Webhook 送受信と iPaaS/Node-RED 的機能の実現可能性・課題 | 2026-02-26 |
+| 006 | [iCal インターフェース設計](03-データ操作・API/006-iCalインターフェース設計.md)                              | iCal フィード追加のための URL・DB・権限・TZ・ビュー設計 | 2026-02-25 |
 
 ### 04. UI・画面
 

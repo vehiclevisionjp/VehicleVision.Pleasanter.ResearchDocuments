@@ -14,6 +14,17 @@
     - [原因2: API でのサーバースクリプト登録が制限されている](#原因2-api-でのサーバースクリプト登録が制限されている)
     - [原因3: SiteModel のライフサイクルメソッドでサーバースクリプトが呼ばれていない](#原因3-sitemodel-のライフサイクルメソッドでサーバースクリプトが呼ばれていない)
 - [WhenloadingSiteSettings の動作](#whenloadingsitesettings-の動作)
+- [items オブジェクトの既存 Sites 対応状況](#items-オブジェクトの既存-sites-対応状況)
+    - [Sites 取得メソッド](#sites-取得メソッド)
+    - [Sites 作成・操作メソッド](#sites-作成操作メソッド)
+    - [GetSite で取得できる SiteModel の読み書き可能プロパティ](#getsite-で取得できる-sitemodel-の読み書き可能プロパティ)
+    - [使用例](#使用例)
+- [context オブジェクトで取得可能なサイト情報](#context-オブジェクトで取得可能なサイト情報)
+    - [Sites 関連プロパティ](#sites-関連プロパティ)
+    - [その他の有用なプロパティ](#その他の有用なプロパティ)
+    - [context のメソッド](#context-のメソッド)
+    - [画面条件での context と items の組み合わせ例](#画面条件での-context-と-items-の組み合わせ例)
+- [siteSettings オブジェクトの機能](#sitesettings-オブジェクトの機能)
 - [ServerScriptUtilities.Values() のモデル対応状況](#serverscriptutilitiesvalues-のモデル対応状況)
     - [共通プロパティ（BaseItemModel）](#共通プロパティbaseitemmodel)
     - [モデル固有プロパティ](#モデル固有プロパティ)
@@ -45,6 +56,9 @@
 
 - ServerScript の実行条件のうち、Sites に対して実行されているもの/されていないものを明確にする
 - Sites に対してサーバースクリプトを実行可能にするために必要な改修箇所を洗い出す
+- `items`/`context`/`siteSettings` オブジェクトの既存 Sites 対応状況を把握する
+- Sites 固有情報（SiteId、SiteName 等）の読み書き方法を整理する
+- 画面関連条件での `context` による情報取得と Sites 操作の実現方法を調査する
 - 改修の影響範囲とリスクを評価する
 
 ---
@@ -208,6 +222,184 @@ public void SetByWhenloadingSiteSettingsServerScript(
 - `itemModel: null` で実行されるため、`model` オブジェクトにはレコードのデータが含まれない
 - サイト設定自体の編集操作（`edit`、`update`、`delete` 等）時には実行がスキップされる
 - 主にレコード一覧表示やレコード編集画面を開いた際にサイト設定のカスタマイズ目的で使用される
+
+---
+
+## items オブジェクトの既存 Sites 対応状況
+
+`items` オブジェクト（`ServerScriptModelApiItems`）は、
+サーバースクリプトからレコードやサイトを操作するための API を提供する。
+Sites に関する操作は既に複数サポートされている。
+
+**ファイル**: `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptModelApiItems.cs`
+
+### Sites 取得メソッド
+
+| メソッド                         | 引数              | 説明                               |
+| -------------------------------- | ----------------- | ---------------------------------- |
+| `items.GetSite(id)`              | SiteId            | SiteId でサイトを取得              |
+| `items.GetSiteByTitle(title)`    | サイトタイトル    | タイトルでサイトを検索             |
+| `items.GetSiteByName(siteName)`  | SiteName          | SiteName でサイトを検索            |
+| `items.GetSiteByGroupName(name)` | SiteGroupName     | SiteGroupName でサイトを検索       |
+| `items.GetClosestSite(name, id)` | SiteName, 起点 ID | 起点から最も近いサイトを名前で検索 |
+
+### Sites 作成・操作メソッド
+
+| メソッド                       | 説明                     |
+| ------------------------------ | ------------------------ |
+| `items.NewSite(referenceType)` | 新規 SiteModel を生成    |
+| `items.Create(siteId, model)`  | サイト配下にレコード作成 |
+| `items.Update(siteId, model)`  | サイト/レコードを更新    |
+| `items.Delete(siteId)`         | サイト/レコードを削除    |
+
+これらのメソッドは内部的に `ItemModel.CreateByServerScript()` 等を呼び出し、
+`SiteUtilities.CreateByServerScript()` / `UpdateByServerScript()` /
+`DeleteByServerScript()` に委譲される。
+
+### GetSite で取得できる SiteModel の読み書き可能プロパティ
+
+`items.GetSite()` 等で取得した結果は `ServerScriptModelApiModel` として返される。
+このクラスは `DynamicObject` を継承しており、
+SiteModel の場合は以下のプロパティが読み書き可能。
+
+**ファイル**: `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptModelApiModel.cs`（行番号: 103-176）
+
+| プロパティ           | 型             | 読取 | 書込 | 説明                 |
+| -------------------- | -------------- | :--: | :--: | -------------------- |
+| `SiteId`             | `long`         |  可  |  -   | サイトID             |
+| `SiteName`           | `string`       |  可  |  可  | サイト名             |
+| `SiteGroupName`      | `string`       |  可  |  可  | サイトグループ名     |
+| `ReferenceType`      | `string`       |  可  |  可  | 参照タイプ           |
+| `ParentId`           | `long`         |  可  |  可  | 親サイトID           |
+| `InheritPermission`  | `long`         |  可  |  可  | 権限継承元           |
+| `Publish`            | `bool`         |  可  |  可  | 公開フラグ           |
+| `DisableCrossSearch` | `bool`         |  可  |  可  | 横断検索無効         |
+| `GridGuide`          | `string`       |  可  |  可  | 一覧ガイド           |
+| `EditorGuide`        | `string`       |  可  |  可  | エディタガイド       |
+| `CalendarGuide`      | `string`       |  可  |  可  | カレンダーガイド     |
+| `CrosstabGuide`      | `string`       |  可  |  可  | クロス集計ガイド     |
+| `GanttGuide`         | `string`       |  可  |  可  | ガントチャートガイド |
+| `BurnDownGuide`      | `string`       |  可  |  可  | バーンダウンガイド   |
+| `TimeSeriesGuide`    | `string`       |  可  |  可  | 時系列ガイド         |
+| `AnalyGuide`         | `string`       |  可  |  可  | 分析ガイド           |
+| `KambanGuide`        | `string`       |  可  |  可  | カンバンガイド       |
+| `ImageLibGuide`      | `string`       |  可  |  可  | 画像ライブラリガイド |
+| `SiteSettings`       | `SiteSettings` |  可  |  可  | サイト設定（JSON）   |
+| `LockedTime`         | `Time`         |  可  |  可  | ロック日時           |
+| `LockedUser`         | `User`         |  可  |  可  | ロックユーザー       |
+| `ApiCountDate`       | `DateTime`     |  可  |  可  | API カウント日       |
+| `ApiCount`           | `int`          |  可  |  可  | API カウント         |
+
+加えて、`BaseItemModel` 共通プロパティ（`Title`、`Body`、`Ver`、
+`Creator`、`Updator`、`CreatedTime`、`UpdatedTime`）も読み書き可能。
+
+### 使用例
+
+```javascript
+// SiteId でサイト情報を取得
+let site = items.GetSite(context.SiteId);
+if (site.length > 0) {
+    context.Log('SiteName: ' + site[0].SiteName);
+    context.Log('ReferenceType: ' + site[0].ReferenceType);
+    context.Log('ParentId: ' + site[0].ParentId);
+}
+
+// SiteName でサイトを検索
+let sites = items.GetSiteByName('マスタテーブル');
+
+// 新しいサイトを作成
+let newSite = items.NewSite('Issues');
+newSite.Title = '新しい課題管理';
+newSite.SiteName = 'task-tracker';
+newSite.Create(parentSiteId);
+
+// サイト情報を更新
+let target = items.GetSite(targetSiteId);
+if (target.length > 0) {
+    target[0].SiteName = '更新後のサイト名';
+    target[0].Update();
+}
+```
+
+---
+
+## context オブジェクトで取得可能なサイト情報
+
+`context` オブジェクト（`ServerScriptModelContext`）は、
+現在のリクエストコンテキストに関する情報を提供する。
+Sites 関連の情報も含まれている。
+
+**ファイル**: `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptModelContext.cs`
+
+### Sites 関連プロパティ
+
+| プロパティ      | 型       | 説明                                      |
+| --------------- | -------- | ----------------------------------------- |
+| `SiteId`        | `long`   | 現在のサイトID                            |
+| `SiteTitle`     | `string` | 現在のサイトタイトル                      |
+| `Id`            | `long`   | 現在のレコードID（サイトの場合は SiteId） |
+| `ReferenceType` | `string` | 参照タイプ（Sites/Issues/Results 等）     |
+| `Controller`    | `string` | コントローラー名                          |
+| `Action`        | `string` | アクション名                              |
+
+### その他の有用なプロパティ
+
+| プロパティ     | 型       | 説明               |
+| -------------- | -------- | ------------------ |
+| `TenantId`     | `int`    | テナントID         |
+| `UserId`       | `int`    | ユーザーID         |
+| `LoginId`      | `string` | ログインID         |
+| `DeptId`       | `int`    | 部署ID             |
+| `Groups`       | `int[]`  | 所属グループID一覧 |
+| `HasPrivilege` | `bool`   | 特権ユーザーフラグ |
+| `ControlId`    | `string` | 操作コントロールID |
+| `Condition`    | `string` | 実行条件           |
+| `AbsoluteUri`  | `string` | リクエスト URI     |
+| `Query`        | `string` | クエリ文字列       |
+| `HttpMethod`   | `string` | HTTP メソッド      |
+
+### context のメソッド
+
+| メソッド                                   | 説明                       |
+| ------------------------------------------ | -------------------------- |
+| `context.Log(value)`                       | ログ出力                   |
+| `context.Error(message)`                   | エラー設定                 |
+| `context.AddMessage(text, css)`            | 画面メッセージ追加         |
+| `context.Redirect(url)`                    | リダイレクト               |
+| `context.AddResponse(method, target, ...)` | レスポンスコレクション追加 |
+| `context.ResponseSet(target, value, ...)`  | UI 要素の値設定            |
+
+### 画面条件での context と items の組み合わせ例
+
+```javascript
+// WhenloadingSiteSettings: サイト設定読み込み時
+// context から現在のサイト情報を取得し、items で操作
+context.Log('SiteId: ' + context.SiteId);
+context.Log('SiteTitle: ' + context.SiteTitle);
+context.Log('Action: ' + context.Action);
+
+// 現在のサイト情報を items 経由で詳細取得
+let site = items.GetSite(context.SiteId);
+if (site.length > 0) {
+    context.Log('SiteName: ' + site[0].SiteName);
+    context.Log('ParentId: ' + site[0].ParentId);
+}
+```
+
+---
+
+## siteSettings オブジェクトの機能
+
+`siteSettings` オブジェクト（`ServerScriptModelSiteSettings`）は、
+現在のサイト設定に関する操作を提供する。
+
+**ファイル**: `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptModelSiteSettings.cs`
+
+| プロパティ/メソッド | 型              | 説明                           |
+| ------------------- | --------------- | ------------------------------ |
+| `DefaultViewId`     | `int?`          | デフォルトビューID（読み書き） |
+| `Sections`          | `List<Section>` | セクション一覧                 |
+| `SiteId(title)`     | `long`          | タイトルからサイトIDを取得     |
 
 ---
 
@@ -497,25 +689,32 @@ flowchart LR
 
 ## 結論
 
-| 項目                  | 内容                                                                                                                                                                            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 現状の Sites 対応状況 | 15 条件中、`WhenloadingSiteSettings` のみ対応済。他の 14 条件は未対応                                                                                                           |
-| 未対応の原因          | UI 非表示（CSS `hidden`）、API 制限（`ServerScriptRefTypes`）、モデルメソッド未呼び出し                                                                                         |
-| 対応可能な条件        | `BeforeCreate`、`AfterCreate`、`BeforeUpdate`、`AfterUpdate`、`BeforeDelete`、`AfterDelete`、`BeforeOpeningPage` の 7 条件                                                      |
-| 対応不要な条件        | `WhenViewProcessing`、`WhenloadingRecord`、`BeforeFormula`、`AfterFormula`、`BeforeOpeningRow`、`BeforeBulkDelete`、`AfterBulkDelete` の 7 条件（Sites にはこれらの概念がない） |
-| 改修ファイル数        | 4-5 ファイル                                                                                                                                                                    |
-| 主な改修リスク        | `BeforeCreate` 時の SiteSettings 未確定問題、サイト削除時の子サイト連鎖                                                                                                         |
-| 既存機能への影響      | SiteModel は `BaseItemModel` を継承済みのため、ServerScript メソッドは利用可能。新規メソッド追加は不要                                                                          |
+| 項目                    | 内容                                                                                                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 現状の Sites 対応状況   | 15 条件中、`WhenloadingSiteSettings` のみ対応済。他の 14 条件は未対応                                                                           |
+| items API の Sites 対応 | `GetSite`/`NewSite`/`Create`/`Update`/`Delete` は既にサポート済。SiteModel 固有プロパティの読み書きも対応済                                     |
+| context の Sites 情報   | `SiteId`、`SiteTitle`、`ReferenceType`、`Action` 等で現在のサイト情報を取得可能                                                                 |
+| 未対応の原因            | UI 非表示（CSS `hidden`）、API 制限（`ServerScriptRefTypes`）、モデルメソッド未呼び出し                                                         |
+| 対応可能な条件          | `BeforeCreate`、`AfterCreate`、`BeforeUpdate`、`AfterUpdate`、`BeforeDelete`、`AfterDelete`、`BeforeOpeningPage` の 7 条件                      |
+| 対応不要な条件          | `WhenViewProcessing`、`WhenloadingRecord`、`BeforeFormula`、`AfterFormula`、`BeforeOpeningRow`、`BeforeBulkDelete`、`AfterBulkDelete` の 7 条件 |
+| 改修ファイル数          | 4-5 ファイル                                                                                                                                    |
+| 主な改修リスク          | `BeforeCreate` 時の SiteSettings 未確定問題、サイト削除時の子サイト連鎖                                                                         |
+| 既存機能への影響        | SiteModel は `BaseItemModel` を継承済みのため、ServerScript メソッドは利用可能。新規メソッド追加は不要                                          |
+| model/saved での制約    | `Values()`/`SavedValues()` に SiteModel 分岐がないため、ライフサイクル条件での `model` オブジェクトに Site 固有プロパティが未設定               |
 
 ---
 
 ## 関連ソースコード
 
-| ファイル                                                             | 内容                                                     |
-| -------------------------------------------------------------------- | -------------------------------------------------------- |
-| `Implem.Pleasanter/Libraries/Settings/ServerScript.cs`               | ServerScript データモデル・実行条件プロパティ            |
-| `Implem.Pleasanter/Libraries/Settings/ApiSiteSetting.cs`             | API 経由サーバースクリプト登録の ReferenceType 制限      |
-| `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptUtilities.cs` | ServerScript 実行エンジン・Values() プロパティマッピング |
-| `Implem.Pleasanter/Models/Shared/_BaseModel.cs`                      | SetBy\*ServerScript メソッド定義（BaseItemModel）        |
-| `Implem.Pleasanter/Models/Sites/SiteModel.cs`                        | SiteModel ライフサイクルメソッド（Create/Update/Delete） |
-| `Implem.Pleasanter/Models/Sites/SiteUtilities.cs`                    | サーバースクリプト設定ダイアログ UI                      |
+| ファイル                                                                     | 内容                                                           |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `Implem.Pleasanter/Libraries/Settings/ServerScript.cs`                       | ServerScript データモデル・実行条件プロパティ                  |
+| `Implem.Pleasanter/Libraries/Settings/ApiSiteSetting.cs`                     | API 経由サーバースクリプト登録の ReferenceType 制限            |
+| `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptUtilities.cs`         | ServerScript 実行エンジン・Values() プロパティマッピング       |
+| `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptModelApiItems.cs`     | items オブジェクト（GetSite/NewSite/CRUD）                     |
+| `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptModelApiModel.cs`     | API モデル（SiteModel 読み書きプロパティ定義）                 |
+| `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptModelContext.cs`      | context オブジェクト（サイト情報含む）                         |
+| `Implem.Pleasanter/Libraries/ServerScripts/ServerScriptModelSiteSettings.cs` | siteSettings オブジェクト                                      |
+| `Implem.Pleasanter/Models/Shared/_BaseModel.cs`                              | SetBy\*ServerScript メソッド定義（BaseItemModel）              |
+| `Implem.Pleasanter/Models/Sites/SiteModel.cs`                                | SiteModel ライフサイクルメソッド（Create/Update/Delete）       |
+| `Implem.Pleasanter/Models/Sites/SiteUtilities.cs`                            | サーバースクリプト設定ダイアログ UI・ServerScript 操作メソッド |

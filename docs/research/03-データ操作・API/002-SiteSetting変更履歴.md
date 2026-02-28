@@ -27,6 +27,7 @@
     - [ハードコーディング・無視される値の詳細](#ハードコーディング無視される値の詳細)
     - [履歴記録の判定結果](#履歴記録の判定結果)
     - [履歴が記録されないケース](#履歴が記録されないケース)
+- [結論](#結論)
 - [関連ソースコード一覧](#関連ソースコード一覧)
     - [流入経路別の処理](#流入経路別の処理)
     - [履歴判定](#履歴判定)
@@ -95,8 +96,8 @@ flowchart TB
     VerUpTrue --> VersionsTrue["Versions.VerUp() → true<br/>(verUp引数がtrueなので即座に)"]
     VerUpFalse --> VersionsFalse["Versions.VerUp() → false<br/>(IsSite除外成立)"]
 
-    VersionsTrue --> RecordYes["✅ 履歴記録される"]
-    VersionsFalse --> RecordNo["❌ 履歴記録されない"]
+    VersionsTrue --> RecordYes["履歴記録される"]
+    VersionsFalse --> RecordNo["履歴記録されない"]
 
     style RecordYes fill:#d4edda,stroke:#28a745
     style RecordNo fill:#f8d7da,stroke:#dc3545
@@ -123,10 +124,10 @@ flowchart TB
     DefaultCondition -->|別日 または 別ユーザー| DefaultTrue["VerUp = true"]
     DefaultCondition -->|同日 かつ 同ユーザー| DefaultFalse["VerUp = false"]
 
-    VerUpTrue --> RecordYes["✅ 履歴記録される"]
+    VerUpTrue --> RecordYes["履歴記録される"]
     Always --> RecordYes
     DefaultTrue --> RecordYes
-    DefaultFalse --> RecordNo["❌ 履歴記録されない"]
+    DefaultFalse --> RecordNo["履歴記録されない"]
     Disabled --> RecordNo
 
     style RecordYes fill:#d4edda,stroke:#28a745
@@ -149,9 +150,9 @@ flowchart TB
     AutoType -->|Default| Default["VerUp=false なので<br/>false"]
     AutoType -->|Disabled| Disabled["VerUp=false<br/>AutoVerUpType=Disabled<br/>で false"]
 
-    Always --> RecordYes["✅ 履歴記録される"]
-    Default --> RecordNo["❌ 履歴記録されない"]
-    Disabled --> RecordNo2["❌ 履歴記録されない"]
+    Always --> RecordYes["履歴記録される"]
+    Default --> RecordNo["履歴記録されない"]
+    Disabled --> RecordNo2["履歴記録されない"]
 
     style RecordYes fill:#d4edda,stroke:#28a745
     style RecordNo fill:#f8d7da,stroke:#dc3545
@@ -160,12 +161,12 @@ flowchart TB
 
 ### 判定結果サマリー
 
-| 流入経路               | 条件                           | Always           | Default          | Disabled         |
-| ---------------------- | ------------------------------ | ---------------- | ---------------- | ---------------- |
-| **UI**                 | 別日/別ユーザー (readonly)     | ✅ 記録 (強制ON) | ✅ 記録 (強制ON) | ✅ 記録 (強制ON) |
-| **UI**                 | 同日/同ユーザー (チェックなし) | ❌ 記録されない  | ❌ 記録されない  | ❌ 記録されない  |
-| **サーバースクリプト** | -                              | ✅ 記録          | 条件次第         | ❌ 記録されない  |
-| **API**                | -                              | ✅ 記録          | ❌ 記録されない  | ❌ 記録されない  |
+| 流入経路               | 条件                           | Always        | Default       | Disabled      |
+| ---------------------- | ------------------------------ | ------------- | ------------- | ------------- |
+| **UI**                 | 別日/別ユーザー (readonly)     | 記録 (強制ON) | 記録 (強制ON) | 記録 (強制ON) |
+| **UI**                 | 同日/同ユーザー (チェックなし) | 記録されない  | 記録されない  | 記録されない  |
+| **サーバースクリプト** | -                              | 記録          | 条件次第      | 記録されない  |
+| **API**                | -                              | 記録          | 記録されない  | 記録されない  |
 
 > **Note**:
 >
@@ -326,8 +327,8 @@ flowchart TB
     Check -->|Yes| True["verUp引数が true<br/>→ 即座に true を返す<br/>→ IsSite除外条件は評価されない"]
     Check -->|No| False["IsSite除外条件成立<br/>→ false を返す"]
 
-    True --> RecordYes["✅ 履歴記録される<br/>(SiteSetting の変更も含む)"]
-    False --> RecordNo["❌ 履歴記録されない"]
+    True --> RecordYes["履歴記録される<br/>(SiteSetting の変更も含む)"]
+    False --> RecordNo["履歴記録されない"]
 
     style RecordYes fill:#d4edda,stroke:#28a745
     style RecordNo fill:#f8d7da,stroke:#dc3545
@@ -389,8 +390,8 @@ flowchart TB
 
     VersionsVerUp --> Check{siteModel.VerUp = true?}
 
-    Check -->|Yes| RecordYes["✅ 履歴記録される"]
-    Check -->|No| RecordNo["❌ 履歴記録されない"]
+    Check -->|Yes| RecordYes["履歴記録される"]
+    Check -->|No| RecordNo["履歴記録されない"]
 
     style RecordYes fill:#d4edda,stroke:#28a745
     style RecordNo fill:#f8d7da,stroke:#dc3545
@@ -468,9 +469,9 @@ flowchart TB
     AutoType -->|Default| Default["VerUp=false なので false"]
     AutoType -->|Disabled| Disabled["VerUp=false で false"]
 
-    Always --> RecordYes["✅ 履歴記録される"]
-    Default --> RecordNo["❌ 履歴記録されない"]
-    Disabled --> RecordNo2["❌ 履歴記録されない"]
+    Always --> RecordYes["履歴記録される"]
+    Default --> RecordNo["履歴記録されない"]
+    Disabled --> RecordNo2["履歴記録されない"]
 
     style RecordYes fill:#d4edda,stroke:#28a745
     style RecordNo fill:#f8d7da,stroke:#dc3545
@@ -563,6 +564,17 @@ public class SiteSettingsApiModel
 | **UI**                 | 同日・同ユーザーで VerUp チェックなし   | チェックボックスが編集可能でデフォルト OFF のため |
 | **サーバースクリプト** | AutoVerUpType = Disabled                | MustVerUp() が false を返す                       |
 | **API**                | AutoVerUpType = Default または Disabled | MustVerUp() が呼ばれず VerUp = false のまま       |
+
+---
+
+## 結論
+
+| 項目                   | 内容                                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| UI経由                 | `IsSite && Action == "update"` 条件により AutoVerUpType に関わらず常に履歴記録可能（VerUp チェックボックスで制御） |
+| サーバースクリプト経由 | `MustVerUp()` 呼び出し時に `isSite: true` が渡されないため、AutoVerUpType の設定に依存する                         |
+| API経由                | `MustVerUp()` が呼ばれず `VerUp = false` 固定のため、`AutoVerUpType = Always` の場合のみ履歴が記録される           |
+| 根本原因               | 流入経路ごとに `Versions.VerUp()` への引数構成が異なり、履歴記録の挙動が統一されていない                           |
 
 ---
 

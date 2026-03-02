@@ -55,6 +55,7 @@
 | 009 | [API ラッパー実装状況](03-データ操作・API/009-APIラッパー実装状況.md)                                                             | Web API に対するスクリプト・サーバースクリプトのラッパー実装状況と機能差違          | 2026-02-26 |
 | 010 | [項目移動の API・スクリプト・サーバースクリプト対応](03-データ操作・API/010-項目移動のAPI・スクリプト・サーバースクリプト対応.md) | Move 機能の Web API・`$p.api*`・サーバースクリプト対応状況と実装方針                | 2026-02-27 |
 | 011 | [$p.apiGet の ApiVersion 指定が無効になる原因](03-データ操作・API/011-$p.apiGetのApiVersion指定が無効になる原因.md)               | `Compatibility_1_3_12=true` 時に `$p.apiGet` の ApiVersion 指定が無視される原因調査 | 2026-03-02 |
+| 012 | [ApiKey なし ApiVersion 反映の実装安全性調査](03-データ操作・API/012-ApiKeyなしApiVersion反映の実装安全性調査.md)                 | ApiKey なしで ApiVersion を反映する変更の安全性検証                                 | 2026-03-02 |
 
 ### 04. UI・画面
 

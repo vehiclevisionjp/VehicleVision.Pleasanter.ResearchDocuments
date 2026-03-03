@@ -73,6 +73,7 @@
 | 003 | [RSS・Atom フィード設計](04-外部連携・フィード/003-RSS・Atomフィード設計.md)                           | RSS 2.0 / Atom 1.0 フィード追加の URL・DB・Controller 設計         | 2026-02-26 |
 | 004 | [Webhook 通知実装案](04-外部連携・フィード/004-Webhook通知実装案.md)                                   | 主要 SaaS Webhook 形式調査と HTTP 通知の問題点・実装案             | 2026-02-25 |
 | 005 | [外部 Webhook 受信機能の設計調査](04-外部連携・フィード/005-外部Webhook受信設計.md)                    | URL トークン・レートリミット・サーバースクリプト後続処理の設計方針 | 2026-02-25 |
+| 006 | [短縮 URL 機能設計](04-外部連携・フィード/006-短縮URL機能設計.md)                                      | 短縮 URL の Controller・DB・バックグラウンドタスク・API 設計       | 2026-03-02 |
 
 ### 05. 通知
 
@@ -103,11 +104,12 @@
 
 ### 08. Markdown
 
-| #   | ドキュメント                                             | 説明                                                       | 調査日     |
-| --- | -------------------------------------------------------- | ---------------------------------------------------------- | ---------- |
-| 001 | [Markdown 実装](08-Markdown/001-Markdown実装.md)         | Markdown の変換フロー・ライブラリ・セキュリティ対策        | 2026-02-23 |
-| 002 | [Markdown 拡張手法](08-Markdown/002-Markdown拡張手法.md) | marked.js v17 拡張 API・ビルドパイプライン・拡張アプローチ | 2026-02-23 |
-| 003 | [Markdown 機能比較](08-Markdown/003-Markdown機能比較.md) | GitHub・Qiita・Zenn・はてな・GitLab との Markdown 機能差分 | 2026-02-23 |
+| #   | ドキュメント                                                                                | 説明                                                       | 調査日     |
+| --- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------- |
+| 001 | [Markdown 実装](08-Markdown/001-Markdown実装.md)                                            | Markdown の変換フロー・ライブラリ・セキュリティ対策        | 2026-02-23 |
+| 002 | [Markdown 拡張手法](08-Markdown/002-Markdown拡張手法.md)                                    | marked.js v17 拡張 API・ビルドパイプライン・拡張アプローチ | 2026-02-23 |
+| 003 | [Markdown 機能比較](08-Markdown/003-Markdown機能比較.md)                                    | GitHub・Qiita・Zenn・はてな・GitLab との Markdown 機能差分 | 2026-02-23 |
+| 004 | [リッチテキストエディタ画像形式対応](08-Markdown/004-リッチテキストエディタ画像形式対応.md) | リッチテキストエディタで使用可能な画像形式の現状と拡張方針 | 2026-03-02 |
 
 ### 09. フロントエンド基盤
 
@@ -123,16 +125,17 @@
 
 ### 10. ServerScript
 
-| #   | ドキュメント                                                                                                                            | 説明                                                                | 調査日     |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------- |
-| 001 | [ServerScript 実装](10-ServerScript/001-ServerScript実装.md)                                                                            | ClearScript V8 統合・スクリプト実行フロー・ホストオブジェクト一覧   | 2026-02-23 |
-| 002 | [ServerScript Python 対応の実現可能性調査](10-ServerScript/002-ServerScript-Python対応.md)                                              | Python エンジン選定・SiteId 単位切替設計・実装方針                  | 2026-02-23 |
-| 003 | [IronPython 3 サンドボックス実装ガイド](10-ServerScript/003-IronPythonサンドボックス.md)                                                | IronPython 3 の OS 操作ブロック・多層防御・.NET interop 制御        | 2026-02-23 |
-| 004 | [C# Script（Roslyn Scripting API）対応の実現可能性調査](10-ServerScript/004-CSharpScript-Roslyn対応.md)                                 | Roslyn Scripting API のサンドボックス可否・V8/IronPython 比較       | 2026-02-23 |
-| 005 | [ServerScript Sites 対応](10-ServerScript/005-ServerScript-Sites対応.md)                                                                | サーバースクリプトの実行可能箇所を Sites に拡大するための調査       | 2026-02-26 |
-| 006 | [ServerScript ビュー別スタイル設定](10-ServerScript/006-ServerScriptビュー別スタイル設定.md)                                            | カレンダー・クロス集計等のビュー別スタイル設定の拡張方針            | 2026-02-26 |
-| 007 | [拡張サーバスクリプトの Action・Controller 制御](10-ServerScript/007-拡張サーバスクリプトAction・Controller制御.md)                     | 拡張サーバスクリプトの Controller/Action フィルタリング仕様と注意点 | 2026-03-02 |
-| 008 | [バックグラウンドサーバスクリプトの cron 式スケジュール対応](10-ServerScript/008-バックグラウンドサーバスクリプトcron式スケジュール.md) | cron 式入力・リアルタイムプレビュー・バリデーション設計             | 2026-03-02 |
+| #   | ドキュメント                                                                                                                            | 説明                                                                 | 調査日     |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ---------- |
+| 001 | [ServerScript 実装](10-ServerScript/001-ServerScript実装.md)                                                                            | ClearScript V8 統合・スクリプト実行フロー・ホストオブジェクト一覧    | 2026-02-23 |
+| 002 | [ServerScript Python 対応の実現可能性調査](10-ServerScript/002-ServerScript-Python対応.md)                                              | Python エンジン選定・SiteId 単位切替設計・実装方針                   | 2026-02-23 |
+| 003 | [IronPython 3 サンドボックス実装ガイド](10-ServerScript/003-IronPythonサンドボックス.md)                                                | IronPython 3 の OS 操作ブロック・多層防御・.NET interop 制御         | 2026-02-23 |
+| 004 | [C# Script（Roslyn Scripting API）対応の実現可能性調査](10-ServerScript/004-CSharpScript-Roslyn対応.md)                                 | Roslyn Scripting API のサンドボックス可否・V8/IronPython 比較        | 2026-02-23 |
+| 005 | [ServerScript Sites 対応](10-ServerScript/005-ServerScript-Sites対応.md)                                                                | サーバースクリプトの実行可能箇所を Sites に拡大するための調査        | 2026-02-26 |
+| 006 | [ServerScript ビュー別スタイル設定](10-ServerScript/006-ServerScriptビュー別スタイル設定.md)                                            | カレンダー・クロス集計等のビュー別スタイル設定の拡張方針             | 2026-02-26 |
+| 007 | [拡張サーバスクリプトの Action・Controller 制御](10-ServerScript/007-拡張サーバスクリプトAction・Controller制御.md)                     | 拡張サーバスクリプトの Controller/Action フィルタリング仕様と注意点  | 2026-03-02 |
+| 008 | [バックグラウンドタスクでの C# DLL/EXE 実行](10-ServerScript/008-バックグラウンドタスクでのCSharp-DLL実行.md)                           | バックグラウンドサーバスクリプト流用による C# DLL/EXE 実行方式の調査 | 2026-03-02 |
+| 009 | [バックグラウンドサーバスクリプトの cron 式スケジュール対応](10-ServerScript/009-バックグラウンドサーバスクリプトcron式スケジュール.md) | cron 式入力・リアルタイムプレビュー・バリデーション設計              | 2026-03-02 |
 
 ### 11. CodeDefiner
 

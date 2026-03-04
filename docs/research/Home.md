@@ -115,6 +115,7 @@
 | 002 | [Markdown 拡張手法](08-Markdown/002-Markdown拡張手法.md)                                    | marked.js v17 拡張 API・ビルドパイプライン・拡張アプローチ | 2026-02-23 |
 | 003 | [Markdown 機能比較](08-Markdown/003-Markdown機能比較.md)                                    | GitHub・Qiita・Zenn・はてな・GitLab との Markdown 機能差分 | 2026-02-23 |
 | 004 | [リッチテキストエディタ画像形式対応](08-Markdown/004-リッチテキストエディタ画像形式対応.md) | リッチテキストエディタで使用可能な画像形式の現状と拡張方針 | 2026-03-02 |
+| 005 | [Markdown エディタ mermaid 対応](08-Markdown/005-Markdownエディタmermaid対応.md)            | mermaid コードブロックを図として描画する実装方法           | 2026-03-04 |
 
 ### 09. フロントエンド基盤
 

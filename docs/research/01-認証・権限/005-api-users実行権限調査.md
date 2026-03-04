@@ -19,6 +19,9 @@
     - [Delete（削除）](#delete削除)
     - [Import（インポート）](#importインポート)
 - [操作権限の全体マトリクス](#操作権限の全体マトリクス)
+    - [ユーザ種別ごとの操作可否](#ユーザ種別ごとの操作可否)
+    - [操作別の判定変数マトリクス](#操作別の判定変数マトリクス)
+    - [判定変数の評価フロー詳細](#判定変数の評価フロー詳細)
 - [プロファイル更新の権限フロー](#プロファイル更新の権限フロー)
 - [UserApiModel のフィールドと更新可能性](#userapimodel-のフィールドと更新可能性)
     - [プロファイル系フィールド](#プロファイル系フィールド)
@@ -138,9 +141,19 @@ public static ErrorData OnEntry(Context context, SiteSettings ss, bool api = fal
 }
 ```
 
-API の場合、`OnEntry` は `ValidateApi` のみで通過する。`CannotManageUsers` チェックは実行されない。そのため、`AllowApi=true` で認証済みのユーザであれば、同一テナント内の全ユーザ情報を取得できる。
+API の場合、`OnEntry` は `ValidateApi` のみで通過する。
+`CannotManageUsers` チェックは実行されない。
+そのため、`AllowApi=true` で認証済みのユーザであれば、
+同一テナント内の全ユーザ情報を取得できる。
 
-取得結果は `Users_TenantId` でテナント単位にフィルタされる。メールアドレスの取得はリクエストの `ApiGetMailAddresses` フラグに依存する。
+`AllowApi=false` の場合は `ValidateApi` 内で 403 エラーとなり、
+Get を含む全 API 操作が拒否される。
+`ShowProfiles` の値に関わらず API 経由でのアクセスは一切不可となる。
+`AllowApi` は API アクセス全体のゲートであり、
+個別操作の権限チェックより前段階で評価される。
+
+取得結果は `Users_TenantId` でテナント単位にフィルタされる。
+メールアドレスの取得はリクエストの `ApiGetMailAddresses` フラグに依存する。
 
 ### Create（作成）
 
@@ -265,6 +278,8 @@ case "users":
 
 ## 操作権限の全体マトリクス
 
+### ユーザ種別ごとの操作可否
+
 | 操作   | TenantManager  | 一般ユーザ（自分自身） | EnableManageTenant | HasPrivilege |
 | ------ | -------------- | ---------------------- | ------------------ | ------------ |
 | Get    | 可             | 可                     | 可                 | 可           |
@@ -274,7 +289,47 @@ case "users":
 | Import | 可             | 不可                   | 不可               | 可           |
 | Export | 可             | 不可                   | 可                 | 可           |
 
-注: 上記は `ShowProfiles=true`（デフォルト）の場合。`ShowProfiles=false` の場合、`HasPrivilege` 以外の操作は `CannotManageUsers` チェックによりブロックされる。
+注: 上記は `ShowProfiles=true`（デフォルト）かつ `AllowApi=true` の場合。
+
+### 操作別の判定変数マトリクス
+
+各操作で参照される判定変数と、その評価順序を以下に示す。
+全操作に共通で `ValidateApi`（`AllowApi` 等）が最初に評価され、
+`false` の場合は後続チェックに到達せず 403 エラーとなる。
+
+| 判定変数 / 条件            | Get | Create | Update | Delete | Import |
+| -------------------------- | --- | ------ | ------ | ------ | ------ |
+| `AllowApi`                 | 要  | 要     | 要     | 要     | 要     |
+| `Parameters.Api.Enabled`   | 要  | 要     | 要     | 要     | 要     |
+| `ContractSettings.Api`     | 要  | 要     | 要     | 要     | 要     |
+| `ShowProfiles`             | -   | 要     | 要     | 要     | -      |
+| `HasPrivilege`             | -   | 要     | 要     | 要     | 要     |
+| `TenantManager`            | -   | 要     | 要     | 要     | 要     |
+| `EnableManageTenant`       | -   | 参照   | 要     | -      | -      |
+| `UserId == Id`（自己判定） | -   | -      | 要     | 要     | -      |
+| カラム別アクセス制御       | -   | 要     | 要     | -      | -      |
+
+凡例: 要 = 判定に使用 / 参照 = 条件に含まれるが拒否方向で参照 / - = 不使用
+
+### 判定変数の評価フロー詳細
+
+| 操作   | 判定フロー（評価順）                                           |
+| ------ | -------------------------------------------------------------- |
+| Get    | `ValidateApi` のみ                                             |
+| Create | `ValidateApi` → `ShowProfiles \|\| HasPrivilege` → `CanCreate` |
+| Update | `ValidateApi` → `CannotManageUsers` → `CanUpdate`              |
+| Delete | `ValidateApi` → `ShowProfiles \|\| HasPrivilege` → `CanDelete` |
+| Import | `ValidateApi` → `CanImport`                                    |
+
+各判定メソッドの内部ロジック:
+
+- `ValidateApi`: `AllowApi && Api.Enabled && ContractSettings.Api`
+- `CannotManageUsers`: `!EnableManageTenant && !HasPrivilege && !ShowProfiles`
+- `CanCreate`: `EnableManageTenant ? false : CanManageTenant`
+- `CanUpdate`: `CanManageTenant \|\| UserId == Id \|\| EnableManageTenant`
+- `CanDelete`: `CanManageTenant && UserId != Id`
+- `CanImport`: `CanManageTenant`
+- `CanManageTenant`: `TenantManager \|\| HasPrivilege`
 
 ---
 
@@ -418,7 +473,10 @@ API の場合、`OnEntry` は `ValidateApi` のみでエントリを許可し、
 `ShowProfiles=false` に設定した場合、`CannotManageUsers()` が `true` を返すようになり、
 `HasPrivilege` を持たないユーザは Update / Create / Delete / Import のいずれも実行できなくなる。
 ただし Get（取得）は `OnEntry` の API パスで `CannotManageUsers` をチェックしないため、
-`ShowProfiles=false` でも認証済みの API ユーザは取得可能である。
+`ShowProfiles=false` でも認証済みかつ `AllowApi=true` の API ユーザは取得可能である。
+
+`AllowApi=false` の場合は `ValidateApi` で全操作がブロックされるため、
+`ShowProfiles` の値に関わらず API 経由のアクセスは不可となる。
 
 ### EnableManageTenant の制限
 

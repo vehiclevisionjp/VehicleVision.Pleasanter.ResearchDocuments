@@ -1,6 +1,8 @@
 # Markdown エディタ mermaid 対応
 
-Markdown フィールドで `mermaid` コードブロックを図として描画できるようにするための実装方法を調査する。現状の制約・実装アーキテクチャを踏まえ、難易度の低い順に 2 つのアプローチを整理し、それぞれの具体的な実装手順を示す。
+Markdown フィールドで `mermaid` コードブロックを図として描画できるようにするための実装方法を調査する。
+現状の制約・実装アーキテクチャを踏まえ、2 つのアプローチを整理し、それぞれの具体的な実装手順を示す。
+本体改修を前提とした正式対応ではアプローチ B を推奨する。
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
@@ -12,7 +14,7 @@ Markdown フィールドで `mermaid` コードブロックを図として描画
     - [Markdown フィールドでの現在の挙動](#markdown-フィールドでの現在の挙動)
     - [課題の整理](#課題の整理)
 - [実装アプローチの選択](#実装アプローチの選択)
-- [アプローチ A: DOM 後処理（推奨）](#アプローチ-a-dom-後処理推奨)
+- [アプローチ A: DOM 後処理（補助手段）](#アプローチ-a-dom-後処理補助手段)
     - [アーキテクチャ概要](#アーキテクチャ概要)
     - [動作の仕組み](#動作の仕組み)
     - [実装コード](#実装コード)
@@ -20,7 +22,7 @@ Markdown フィールドで `mermaid` コードブロックを図として描画
     - [適用方法 A-1: ExtendedScripts（全サイト共通）](#適用方法-a-1-extendedscripts全サイト共通)
     - [適用方法 A-2: サイト設定スクリプト（テーブル単位）](#適用方法-a-2-サイト設定スクリプトテーブル単位)
     - [評価](#評価)
-- [アプローチ B: フロントエンドビルドのフォーク](#アプローチ-b-フロントエンドビルドのフォーク)
+- [アプローチ B: フロントエンドビルドの改修（推奨・正式対応）](#アプローチ-b-フロントエンドビルドの改修推奨正式対応)
     - [アーキテクチャ概要](#アーキテクチャ概要-1)
     - [実装方針](#実装方針)
     - [評価](#評価-1)
@@ -93,18 +95,18 @@ private mdRenderCode = (token: Tokens.Code) => {
 
 ## 実装アプローチの選択
 
-本調査では、プリザンター本体を改修しないか、改修を最小限にする観点から 2 つのアプローチを評価する。
+本調査では 2 つのアプローチを評価する。**本体改修を前提とする正式対応ではアプローチ B を推奨**する。アプローチ A は本体改修なしで即時検証できる補助手段として位置づける。
 
-| アプローチ | 方式                           | 本体改修 | 難易度 | 推奨度               |
-| ---------- | ------------------------------ | -------- | ------ | -------------------- |
-| A          | DOM 後処理（MutationObserver） | 不要     | 低     | 推奨（第一候補）     |
-| B          | フロントエンドビルドのフォーク | 必要     | 中     | 本格統合が必要な場合 |
+| アプローチ | 方式                           | 本体改修 | 難易度 | 推奨度                     |
+| ---------- | ------------------------------ | -------- | ------ | -------------------------- |
+| A          | DOM 後処理（MutationObserver） | 不要     | 低     | 補助手段（検証・暫定対応） |
+| B          | フロントエンドビルドの改修     | 必要     | 中     | 推奨（正式対応）           |
 
 ---
 
-## アプローチ A: DOM 後処理（推奨）
+## アプローチ A: DOM 後処理（補助手段）
 
-marked.js の変換後の DOM に対して、JavaScript スクリプトで後処理を行い mermaid 図を描画する。
+本体改修なしで即時検証できる手段。既存環境への暫定適用や動作確認に有用だが、正式対応はアプローチ B を推奨する。
 
 ### アーキテクチャ概要
 
@@ -301,9 +303,9 @@ DB 登録（管理画面の拡張機能）を使う場合は ExtensionType を `
 
 ---
 
-## アプローチ B: フロントエンドビルドのフォーク
+## アプローチ B: フロントエンドビルドの改修（推奨・正式対応）
 
-`Implem.PleasanterFrontend` をフォークし、`markdownField.ts` に mermaid 処理を組み込む。本体アップデート時のマージコストが生じるが、最もシームレスな統合が実現できる。
+`Implem.PleasanterFrontend` の `markdownField.ts` に mermaid 処理を組み込む。本体の一部として正式に mermaid をサポートする際の推奨アプローチである。
 
 ### アーキテクチャ概要
 
@@ -329,24 +331,30 @@ cd Implem.PleasanterFrontend/wwwroot
 npm install mermaid
 ```
 
-既存の `mermaid-11.9.0.min.js` を直接 import するよりも、npm パッケージを使う方がビルド管理が容易である。
+`wwwroot/Extensions/mermaid-11.9.0.min.js` は別ページ専用の CDN 配置ファイルであり、
+TypeScript モジュールとしては使用できないため npm パッケージを追加する。
 
 #### 手順 2: mdRenderCode の拡張
 
 **ファイル**: `Implem.PleasanterFrontend/wwwroot/src/scripts/modules/markdownField/markdownField.ts`
 
-`mdRenderCode` メソッドで `mermaid` 言語を特別処理し、プレースホルダ要素を返す。
+ファイル冒頭に mermaid の import を追加し、`mdRenderCode` メソッドで `mermaid` 言語を分岐する。
 
 ```typescript
-// import 追加
+// ファイル冒頭の import に追加
 import mermaid from 'mermaid';
+```
 
-// mdRenderCode の先頭に mermaid 分岐を追加
+`mdRenderCode` メソッドの先頭に mermaid 分岐を追加する。`this.escapeHtml(token.text)` で
+テキストをエスケープしてから `data-mermaid-text` 属性に格納する。
+DOMPurify v3 はデフォルトで `data-*` 属性を通過させるため、プレースホルダは除去されない。
+
+```typescript
 private mdRenderCode = (token: Tokens.Code) => {
     const lang = (token.lang || '').trim();
     if (lang === 'mermaid') {
-        // テキストを data 属性に保存したプレースホルダを返す
-        // DOMPurify は data-* 属性をデフォルトで通過させる
+        // mermaid テキストを data 属性に保存したプレースホルダを返す
+        // DOMPurify は data-* 属性をデフォルトで通過させるため追加設定不要
         return `<div class="mermaid-placeholder" data-mermaid-text="${this.escapeHtml(token.text)}"></div>`;
     }
     // 既存のシンタックスハイライト処理（変更なし）
@@ -367,9 +375,39 @@ private mdRenderCode = (token: Tokens.Code) => {
 };
 ```
 
-#### 手順 3: showViewer() へのレンダリング処理追加
+#### 手順 3: mermaid の初期化
 
-`showViewer()` の `finalizeViewerDom()` 呼び出し後に mermaid レンダリング処理を追加する。
+クラス定義の先頭（フィールド宣言部）で mermaid を初期化する。
+`startOnLoad: false` にすることでページ読み込み時の自動レンダリングを無効にし、
+`showViewer()` から明示的に呼び出す形にする。
+
+```typescript
+// クラスフィールドとして追加（他のフィールド宣言と並べる）
+private static isMermaidInitialized: boolean = false;
+
+private initMermaid() {
+    if (MarkdownFieldElement.isMermaidInitialized) return;
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
+    MarkdownFieldElement.isMermaidInitialized = true;
+}
+```
+
+`connectedCallback()` の末尾で初期化を呼び出す。
+
+```typescript
+connectedCallback() {
+    // ...（既存コード）
+    this.initModule();
+    this.addEvents(this.isReadonly);
+    this.initMermaid(); // 追加
+}
+```
+
+#### 手順 4: showViewer() へのレンダリング処理追加
+
+`showViewer()` の `finalizeViewerDom()` 呼び出し後に `renderMermaidPlaceholders()` を追加する。
+`dataset.mermaidText` はブラウザが HTML エンティティを自動デコードして返すため、
+mermaid には元のテキストが渡る。
 
 ```typescript
 public showViewer() {
@@ -409,22 +447,20 @@ private renderMermaidPlaceholders() {
         const text = el.dataset.mermaidText;
         if (!text) return;
         const id = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
-        mermaid.render(id, text).then(({ svg }) => {
-            const div = document.createElement('div');
-            div.className = 'mermaid-diagram';
-            div.innerHTML = svg;
-            el.replaceWith(div);
-        }).catch(e => {
-            console.warn('[mermaid] render error:', e);
-        });
+        mermaid
+            .render(id, text)
+            .then(({ svg }) => {
+                const div = document.createElement('div');
+                div.className = 'mermaid-diagram';
+                div.innerHTML = svg;
+                el.replaceWith(div);
+            })
+            .catch(e => {
+                console.warn('[mermaid] render error:', e);
+            });
     });
 }
 ```
-
-#### 手順 4: DOMPurify 設定の調整
-
-DOMPurify はデフォルトで `data-*` 属性を通過させるため、`data-mermaid-text` に関しては追加設定不要である。
-ただし mermaid テキスト内に HTML エンティティが含まれる場合は `escapeHtml()` で適切にエスケープする（手順 2 で実施済み）。
 
 #### 手順 5: ビルドと配置
 
@@ -434,56 +470,65 @@ npm run build
 # 成果物は Implem.Pleasanter/wwwroot/assets/ に出力される
 ```
 
-Vite のビルドにより `manifest.json` が更新され、`HtmlScripts.cs` の `ManifestScripts()` が新しいファイル名でスクリプトを出力する。
+Vite のビルドにより `manifest.json` が更新され、`HtmlScripts.cs` の `ManifestScripts()` が
+新しいファイル名でスクリプトを出力する。
+
+#### 変更ファイルまとめ
+
+| ファイル                                                                               | 変更内容                                                |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `Implem.PleasanterFrontend/wwwroot/package.json`                                       | `mermaid` パッケージ追加                                |
+| `Implem.PleasanterFrontend/wwwroot/src/scripts/modules/markdownField/markdownField.ts` | mermaid import・mdRenderCode 分岐・レンダリング処理追加 |
 
 ### 評価
 
-| 項目     | 評価                 |
-| -------- | -------------------- |
-| 難易度   | ★★★☆☆                |
-| リスク   | ★★★☆☆                |
-| 柔軟性   | ★★★★★                |
-| 保守性   | ★★☆☆☆                |
-| 本体改修 | **必要**（フォーク） |
+| 項目     | 評価  |
+| -------- | ----- |
+| 難易度   | ★★★☆☆ |
+| リスク   | ★★☆☆☆ |
+| 柔軟性   | ★★★★★ |
+| 保守性   | ★★★★☆ |
+| 本体改修 | 必要  |
 
 ---
 
 ## アプローチ比較
 
-| 項目                      | アプローチ A（DOM 後処理）                       | アプローチ B（フォーク）                                     |
+| 項目                      | アプローチ A（DOM 後処理）                       | アプローチ B（本体改修・推奨）                               |
 | ------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
 | 本体改修                  | 不要                                             | 必要                                                         |
 | mermaid.js の読み込み方法 | JavaScript で動的に `<script>` を挿入            | npm パッケージとして Vite バンドルに組み込み                 |
 | ビューア切替時の再描画    | MutationObserver で `data-editable` 削除を検知   | `showViewer()` 内の `renderMermaidPlaceholders()` で自動実行 |
 | DOMPurify との関係        | サニタイズ後の DOM に SVG を直接挿入（制約なし） | `data-mermaid-text` 属性でプレースホルダを通過               |
-| アップデート追従          | 容易（スクリプトのみ更新）                       | 困難（フォーク差分のマージが必要）                           |
+| アップデート追従          | 容易（スクリプトのみ更新）                       | 本体の一部としてアップデートと同期管理                       |
 | 対応タイミング            | 即時適用可能                                     | ビルド・デプロイが必要                                       |
 | モーダル・Ajax への対応   | bodyObserver で自動対応                          | `markdown-field` 生成時に自動対応                            |
-| 推奨シナリオ              | 標準利用・カスタマイズ環境                       | プリザンターをフォークして開発する場合                       |
+| 推奨シナリオ              | 本体改修なしで検証・暫定適用する場合             | 正式対応として本体に mermaid を統合する場合                  |
 
 ---
 
 ## 結論
 
-| 観点                         | 結論                                                                                                              |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 推奨アプローチ               | **アプローチ A**（DOM 後処理）。本体改修が不要で、ExtendedScripts またはサイト設定スクリプトで即時適用できる      |
-| mermaid.js の利用可否        | `wwwroot/Extensions/mermaid-11.9.0.min.js` が既に配置されており、追加配置は不要                                   |
-| DOMPurify の制約             | DOM 後処理では DOMPurify の後に SVG を挿入するため、DOMPurify の制約を受けない                                    |
-| ビューア切替時の再描画       | MutationObserver で `data-editable` 属性の削除を監視することで、showViewer() 完了直後に自動処理できる             |
-| フォークアプローチの適用条件 | プリザンターをフォークして継続開発している場合に限り、アプローチ B を選択することで最もシームレスな統合が得られる |
-| 本格的なプラグイン機構の不在 | Markdown 拡張向けのプラグイン機構は存在しない。DOM 後処理が実質的に唯一の非改修アプローチである                   |
+| 観点                                 | 結論                                                                                                                                                      |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 推奨アプローチ                       | **アプローチ B**（本体改修）。mermaid npm パッケージを追加し、`markdownField.ts` に `mdRenderCode` 分岐・`renderMermaidPlaceholders()` を組み込む正式対応 |
+| mermaid.js の利用可否                | `wwwroot/Extensions/mermaid-11.9.0.min.js` は別ページ専用。正式対応では npm パッケージ（`mermaid`）を追加して Vite バンドルに組み込む                     |
+| DOMPurify の制約                     | `data-mermaid-text` 属性は DOMPurify v3 がデフォルトで通過させるため、追加設定不要。`renderMermaidPlaceholders()` 内で `dataset.mermaidText` から取得する |
+| ビューア切替時の再描画               | `showViewer()` に `renderMermaidPlaceholders()` を追加することで、エディタ→ビューア切替のたびに自動レンダリングされる                                     |
+| DOM 後処理（アプローチ A）の位置づけ | 本体改修なしで即時検証・暫定適用できる補助手段。正式対応後は不要になる                                                                                    |
+| securityLevel                        | 正式対応では `securityLevel: 'strict'`（デフォルト）を使用する。`'loose'` が必要な機能（click イベント等）は要件に応じて検討する                          |
 
 ---
 
 ## 関連ソースコード
 
-| ファイルパス                                                                           | 説明                                                   |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `Implem.PleasanterFrontend/wwwroot/src/scripts/modules/markdownField/markdownField.ts` | Markdown フィールド Custom Element（mdRenderCode 等）  |
-| `Implem.Pleasanter/wwwroot/Extensions/mermaid-11.9.0.min.js`                           | mermaid.js v11.9.0（配置済み）                         |
-| `Implem.Pleasanter/wwwroot/Extensions/smt-json-to-table.html`                          | mermaid.js 使用例（initialize・render の呼び出し方）   |
-| `Implem.Pleasanter/Libraries/HtmlParts/HtmlScripts.cs`                                 | ExtendedScripts の HTML 出力・スクリプト読み込み順序   |
-| `Implem.Pleasanter/Libraries/Initializers/ExtensionInitializer.cs`                     | ExtendedScripts の DB 登録読み込みロジック             |
-| `Implem.ParameterAccessor/Parts/ExtendedScript.cs`                                     | ExtendedScript パラメータクラス                        |
-| `Implem.ParameterAccessor/Parts/ExtendedBase.cs`                                       | ExtendedBase（SiteIdList・Actions などのフィルタ定義） |
+| ファイルパス                                                                           | 説明                                                         |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `Implem.PleasanterFrontend/wwwroot/src/scripts/modules/markdownField/markdownField.ts` | Markdown フィールド Custom Element（mdRenderCode 等）        |
+| `Implem.PleasanterFrontend/wwwroot/package.json`                                       | フロントエンド npm 依存定義（mermaid パッケージ追加先）      |
+| `Implem.Pleasanter/wwwroot/Extensions/mermaid-11.9.0.min.js`                           | mermaid.js v11.9.0（Site Visualizer 専用の配置済みファイル） |
+| `Implem.Pleasanter/wwwroot/Extensions/smt-json-to-table.html`                          | mermaid.js 使用例（initialize・render の呼び出し方）         |
+| `Implem.Pleasanter/Libraries/HtmlParts/HtmlScripts.cs`                                 | ExtendedScripts の HTML 出力・スクリプト読み込み順序         |
+| `Implem.Pleasanter/Libraries/Initializers/ExtensionInitializer.cs`                     | ExtendedScripts の DB 登録読み込みロジック                   |
+| `Implem.ParameterAccessor/Parts/ExtendedScript.cs`                                     | ExtendedScript パラメータクラス                              |
+| `Implem.ParameterAccessor/Parts/ExtendedBase.cs`                                       | ExtendedBase（SiteIdList・Actions などのフィルタ定義）       |

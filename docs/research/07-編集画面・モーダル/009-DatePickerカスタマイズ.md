@@ -13,6 +13,7 @@
     - [現行の EditorFormat と flatpickr オプションの対応](#現行の-editorformat-と-flatpickr-オプションの対応)
 - [年月選択モード（Ym 形式）の実現方法](#年月選択モードym-形式の実現方法)
     - [monthSelectPlugin とは](#monthselectplugin-とは)
+    - [Ym 形式の保存値の仕様](#ym-形式の保存値の仕様)
     - [実装に必要な変更箇所](#実装に必要な変更箇所)
 - [年選択モード（Y 形式）の実現方法](#年選択モードy-形式の実現方法)
     - [flatpickr の年選択対応状況](#flatpickr-の年選択対応状況)
@@ -180,6 +181,27 @@ flatpickr(input, {
 
 現行の vendor バンドル（`vendor_k0RsABuf.js`）には `monthSelectPlugin` が**含まれていない**。追加にはビルド設定の変更が必要。
 
+### Ym 形式の保存値の仕様
+
+Ym 形式で選択した値は、**選択した年月の 1 日 00:00:00** として保存・処理する。
+
+プリザンターの datetime カラムは `DateTime.TryParse` で文字列を解析し、UTC に変換して DB に格納する
+（`Column.cs` 行 853-856）。`Y/m` のみの文字列（例: `"2026/03"`）は `TryParse` で解析できない場合がある。
+
+そのため、`monthSelectPlugin` の `dateFormat` には日部分を `01` に固定した形式を使用し、
+flatpickr が `"2026/03/01"` 形式で値を出力するよう設定する。
+
+```typescript
+monthSelectPlugin({
+    shorthand: false,
+    dateFormat: 'Y/m/01', // 日部分を "01" に固定 → "2026/03/01" として出力
+    altFormat: 'Y年m月', // 画面表示は "2026年03月"
+});
+```
+
+これにより、UI には `"2026年03月"` と表示しつつ、`<input>` の value には `"2026/03/01"` が入り、
+サーバーが `2026/03/01 00:00:00` として解析・保存できる。
+
 ### 実装に必要な変更箇所
 
 ```mermaid
@@ -230,7 +252,13 @@ private initDatePicker() {
     const fpOptions: Options = {
         // ...既存オプション...
         plugins: isMonthOnly
-            ? [monthSelectPlugin({ shorthand: false, dateFormat: this.dateFormat })]
+            ? [
+                  monthSelectPlugin({
+                      shorthand: false,
+                      dateFormat: 'Y/m/01', // 日を 01 固定で出力 → "2026/03/01" 形式
+                      altFormat: 'Y/m',     // 表示は Y/m 形式のまま
+                  }),
+              ]
             : [],
     };
     this.dataPicker = flatpickr(this.inputElm as HTMLElement, fpOptions);
@@ -467,6 +495,8 @@ flatpickr(input, {
 
 **年月選択モード（Ym）** は `monthSelectPlugin` を使うことで実現できる。必要な変更は `Column.cs`（EditorFormat 追加）・`datefield.ts` /
 Svelte コンポーネント（プラグイン適用）・`SiteUtilities.cs`（選択肢追加）の計 4〜5 ファイルに留まり、変更コストは中程度。
+保存値は選択した月の **1 日 00:00:00** を基準とする。`monthSelectPlugin` の `dateFormat` を `'Y/m/01'` に設定することで
+`"2026/03/01"` 形式で出力し、既存の `DateTime.TryParse` でサーバー側の変更なしに解析できる。
 
 **年選択モード（Y）** は flatpickr の公式サポートがなく、DOM 直接操作による独自実装が必要になるため保守コストが高い。`<select>` などの
 標準コントロールへの差し替えか、数値型カラムで年を数値として入力させる代替策の方が現実的。

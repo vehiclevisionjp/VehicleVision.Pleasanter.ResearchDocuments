@@ -1,0 +1,367 @@
+# Sessions テーブル PRIMARY KEY 違反
+
+Sessions テーブルへのデータ挿入時に発生する PRIMARY KEY 違反（重複キーエラー）の原因を調査し、発生メカニズムと対策を整理します。
+
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+- [調査情報](#調査情報)
+- [調査目的](#調査目的)
+- [Sessions テーブルの構造](#sessions-テーブルの構造)
+    - [主キー構成](#主キー構成)
+- [UpdateOrInsert パターンの実装](#updateorinsert-パターンの実装)
+    - [SetRds メソッド](#setrds-メソッド)
+    - [SQL 生成パターン（データベース別）](#sql-生成パターンデータベース別)
+- [レースコンディションの発生メカニズム](#レースコンディションの発生メカニズム)
+    - [結論: PRIMARY KEY 違反は発生し得る](#結論-primary-key-違反は発生し得る)
+    - [発生シーケンス](#発生シーケンス)
+    - [発生条件](#発生条件)
+    - [脆弱な時間窓](#脆弱な時間窓)
+- [発生しやすい具体的シナリオ](#発生しやすい具体的シナリオ)
+    - [新規セッション確立時](#新規セッション確立時)
+    - [主要な呼び出し箇所](#主要な呼び出し箇所)
+- [データベース別の影響度](#データベース別の影響度)
+- [対策案](#対策案)
+    - [短期対策: トランザクション + リトライ](#短期対策-トランザクション--リトライ)
+    - [中期対策: データベースネイティブのUPSERT構文の採用](#中期対策-データベースネイティブのupsert構文の採用)
+    - [長期対策: KVS の活用](#長期対策-kvs-の活用)
+- [結論](#結論)
+- [関連ドキュメント](#関連ドキュメント)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
+## 調査情報
+
+| 調査日       | リポジトリ | ブランチ | タグ/バージョン | コミット    | 備考     |
+| ------------ | ---------- | -------- | --------------- | ----------- | -------- |
+| 2026年3月6日 | Pleasanter | main     |                 | `34f162a43` | 初回調査 |
+
+## 調査目的
+
+Sessions テーブルへのデータ挿入時に以下のエラーログが出力される事象について、発生の可否と原因を明らかにする。
+
+```text
+PRIMARY KEY 違反。オブジェクト 'dbo.Sessions' には重複するキーを挿入できません。
+```
+
+---
+
+## Sessions テーブルの構造
+
+### 主キー構成
+
+Sessions テーブルは以下の 3 カラムによる複合主キーを持つ。
+
+| カラム        | 型            | PK  | 説明             |
+| ------------- | ------------- | --- | ---------------- |
+| `SessionGuid` | nvarchar(32)  | 1   | セッション識別子 |
+| `Key`         | nvarchar(256) | 2   | セッションキー   |
+| `Page`        | nvarchar(32)  | 3   | ページ名         |
+| `Value`       | nvarchar(max) |     | セッション値     |
+| `ReadOnce`    | bit           |     | 1回読み取り削除  |
+| `UserArea`    | bit           |     | ユーザーエリア   |
+| `Creator`     | int           |     | 作成者           |
+| `Updator`     | int           |     | 更新者           |
+| `CreatedTime` | datetime      |     | 作成日時         |
+| `UpdatedTime` | datetime      |     | 更新日時         |
+
+---
+
+## UpdateOrInsert パターンの実装
+
+Sessions テーブルへの書き込みは `SessionUtilities.SetRds()` を経由し、`Rds.UpdateOrInsertSessions()` を使用する。
+
+### SetRds メソッド
+
+**ファイル**: `Implem.Pleasanter/Models/Sessions/SessionUtilities.cs`（行番号: 140-192）
+
+```csharp
+private static void SetRds(
+    Context context,
+    string key,
+    string value,
+    bool readOnce,
+    bool page,
+    bool userArea,
+    string sessionGuid = null)
+{
+    if (value != null)
+    {
+        string pageName = page
+            ? context.Page ?? string.Empty
+            : string.Empty;
+        sessionGuid = sessionGuid ?? context.SessionGuid;
+        if (Parameters.Session.UseKeyValueStore && !userArea)
+        {
+            // Redis に保存（省略）
+        }
+        else
+        {
+            Repository.ExecuteNonQuery(
+            context: context,
+            statements: Rds.UpdateOrInsertSessions(
+                param: Rds.SessionsParam()
+                    .SessionGuid(sessionGuid)
+                    .Key(key)
+                    .Page(pageName)
+                    .Value(value)
+                    .ReadOnce(readOnce)
+                    .UserArea(userArea),
+                where: Rds.SessionsWhere()
+                    .SessionGuid(sessionGuid)
+                    .Key(key)
+                    .Page(context.Page ?? string.Empty, _using: page)));
+        }
+    }
+    else
+    {
+        Remove(context: context, key: key, page: page);
+    }
+}
+```
+
+注目すべき点は `Repository.ExecuteNonQuery()` の呼び出しで `transactional: false`（デフォルト値）のまま実行されていることである。
+
+### SQL 生成パターン（データベース別）
+
+`UpdateOrInsert` は UPDATE の結果に応じて INSERT にフォールバックするパターンで実装されているが、データベースごとに SQL の構成が異なる。
+
+#### SQL Server
+
+**ファイル**: `Rds/Implem.SqlServer/SqlServerCommandText.cs`（行番号: 60-79）
+
+```sql
+UPDATE "Sessions"
+  SET "Updator"=@U, "UpdatedTime"=GETUTCDATE(),
+      "Value"=@Value, "ReadOnce"=@ReadOnce, "UserArea"=@UserArea
+  WHERE "SessionGuid"=@SessionGuid AND "Key"=@Key AND "Page"=@Page
+
+IF @@ROWCOUNT = 0
+  INSERT INTO "Sessions"
+    ("Creator","Updator","SessionGuid","Key","Page","Value","ReadOnce","UserArea")
+  VALUES
+    (@U, @U, @SessionGuid, @Key, @Page, @Value, @ReadOnce, @UserArea)
+```
+
+SQL Server では `UPDATE` + `IF @@ROWCOUNT = 0 INSERT` パターンで実装される。UPDATE と INSERT は単一バッチとして送信されるが、**トランザクションでは保護されていない**。
+
+#### PostgreSQL
+
+**ファイル**: `Rds/Implem.PostgreSql/PostgreSqlCommandText.cs`（行番号: 64-91）
+
+```sql
+WITH CTE1 AS (
+  UPDATE "Sessions"
+    SET "Updator"=@U, "UpdatedTime"=now() at time zone 'UTC',
+        "Value"=@Value, "ReadOnce"=@ReadOnce, "UserArea"=@UserArea
+    WHERE "SessionGuid"=@SessionGuid AND "Key"=@Key AND "Page"=@Page
+    RETURNING 0
+)
+INSERT INTO "Sessions"
+  ("Creator","Updator","SessionGuid","Key","Page","Value","ReadOnce","UserArea")
+SELECT @U, @U, @SessionGuid, @Key, @Page, @Value, @ReadOnce, @UserArea
+WHERE NOT EXISTS(SELECT * FROM CTE1)
+```
+
+PostgreSQL では CTE を用いて UPDATE と INSERT を単一の文として結合する。MVCC により UPDATE で行ロックを取得するが、行が存在しない場合は**ロックが発生しないため、同じ脆弱性がある**。
+
+#### MySQL
+
+**ファイル**: `Rds/Implem.MySql/MySqlCommandText.cs`（行番号: 71-90）
+
+```sql
+UPDATE `Sessions` SET ...
+  WHERE `SessionGuid`=@SessionGuid AND `Key`=@Key AND `Page`=@Page;
+
+INSERT INTO `Sessions` (`Creator`,`Updator`,`SessionGuid`,`Key`,`Page`,...)
+  SELECT ... FROM (SELECT ...) AS tmp
+  WHERE NOT EXISTS (SELECT 1 FROM `Sessions`
+    WHERE `SessionGuid`=@SessionGuid AND `Key`=@Key AND `Page`=@Page)
+```
+
+MySQL では UPDATE と INSERT が完全に分離された 2 つの文として実行される。
+
+---
+
+## レースコンディションの発生メカニズム
+
+### 結論: PRIMARY KEY 違反は発生し得る
+
+UpdateOrInsert パターンは**アトミックではない**ため、同一キーに対する並行書き込みで PRIMARY KEY 違反が発生する。
+
+### 発生シーケンス
+
+```mermaid
+sequenceDiagram
+    participant A as スレッドA
+    participant DB as Sessions テーブル
+    participant B as スレッドB
+
+    Note over A,B: 同一セッション（SessionGuid + Key + Page）に対する並行書き込み
+
+    A->>DB: UPDATE WHERE SessionGuid=X, Key=Y, Page=Z
+    B->>DB: UPDATE WHERE SessionGuid=X, Key=Y, Page=Z
+    DB-->>A: @@ROWCOUNT = 0（行なし）
+    DB-->>B: @@ROWCOUNT = 0（行なし）
+
+    A->>DB: INSERT (X, Y, Z, ...)
+    DB-->>A: 成功（1行挿入）
+
+    B->>DB: INSERT (X, Y, Z, ...)
+    DB-->>B: PRIMARY KEY 違反
+```
+
+### 発生条件
+
+以下の条件がすべて揃ったときに発生する。
+
+| 条件                   | 説明                                                                 |
+| ---------------------- | -------------------------------------------------------------------- |
+| 同一キーの並行書き込み | 同じ `(SessionGuid, Key, Page)` に対して複数スレッドが同時に書き込む |
+| 行が未存在             | 対象の行が Sessions テーブルにまだ存在しない（UPDATE が空振りする）  |
+| トランザクション未使用 | `transactional: false`（デフォルト値）のまま呼び出されている         |
+| ロック不在             | UPDATE 対象行が存在しない場合、行ロックが取得されずギャップが生じる  |
+
+### 脆弱な時間窓
+
+```mermaid
+flowchart LR
+    A[UPDATE実行] --> B{@@ROWCOUNT > 0?}
+    B -->|Yes| C[終了: 更新成功]
+    B -->|No| D["脆弱な時間窓"]
+    D --> E[INSERT実行]
+    E --> F{成功?}
+    F -->|Yes| G[終了: 挿入成功]
+    F -->|No| H[PRIMARY KEY 違反]
+
+    style D fill:#fee,stroke:#f00,stroke-width:2px
+```
+
+UPDATE が 0 行を返してから INSERT を実行するまでの間が「脆弱な時間窓」である。この間に別のスレッドが同じキーで INSERT を完了すると、後続の INSERT は PRIMARY KEY 違反を引き起こす。
+
+---
+
+## 発生しやすい具体的シナリオ
+
+### 新規セッション確立時
+
+ユーザがログイン直後にページを素早く開くと、セッション関連のデータが初めて挿入される。
+
+```mermaid
+sequenceDiagram
+    participant Browser as ブラウザ
+    participant Req1 as リクエスト1（ページ表示）
+    participant Req2 as リクエスト2（API呼び出し）
+    participant DB as Sessions テーブル
+
+    Browser->>Req1: ページ遷移
+    Browser->>Req2: 非同期APIコール（ほぼ同時）
+
+    Req1->>DB: SetStartTime → UpdateOrInsert("StartTime")
+    Req2->>DB: SetLastAccessTime → UpdateOrInsert("LastAccessTime")
+
+    Note over Req1,Req2: 両リクエストとも初回のため行が存在しない
+    Note over DB: @@ROWCOUNT = 0 が両方で発生 → 両方がINSERTを試行
+```
+
+### 主要な呼び出し箇所
+
+SessionUtilities.Set が呼び出される箇所は多岐にわたる。以下は代表的な呼び出し元である。
+
+| 呼び出し元                               | キー                     | 発生タイミング     |
+| ---------------------------------------- | ------------------------ | ------------------ |
+| `SessionUtilities.SetStartTime()`        | `StartTime`              | セッション開始時   |
+| `SessionUtilities.SetLastAccessTime()`   | `LastAccessTime`         | 毎リクエスト       |
+| `AuthenticationTicketStore.StoreAsync()` | `AuthenticationTicket`   | ログイン時         |
+| `AuthenticationTicketStore.RenewAsync()` | `AuthenticationTicket`   | 認証チケット更新時 |
+| `ViewModes`                              | `View`                   | ビュー切り替え時   |
+| `HandleErrorExAttribute`                 | `Message`                | エラー発生時       |
+| `SiteModel`                              | セッションプロパティ各種 | サイト設定編集時   |
+
+特に `SetLastAccessTime()` は Context の `SessionRequestInterval()` から呼び出され、セッション情報を取得するたびに実行される可能性がある。
+
+---
+
+## データベース別の影響度
+
+| データベース | UpdateOrInsert パターン         | 影響度 | 理由                                             |
+| ------------ | ------------------------------- | ------ | ------------------------------------------------ |
+| SQL Server   | `IF @@ROWCOUNT = 0 INSERT`      | 高     | 単一バッチだがトランザクション保護なし           |
+| PostgreSQL   | `CTE + WHERE NOT EXISTS`        | 中     | 単一文だが行未存在時はロックなし                 |
+| MySQL        | UPDATE + INSERT の 2 文分離実行 | 高     | 完全に分離された文のため、より広い脆弱性窓を持つ |
+
+---
+
+## 対策案
+
+### 短期対策: トランザクション + リトライ
+
+`SetRds()` で `transactional: true` を指定し、PRIMARY KEY 違反発生時にはリトライする。
+
+```csharp
+// 現在の実装（transactional: false がデフォルト）
+Repository.ExecuteNonQuery(
+    context: context,
+    statements: Rds.UpdateOrInsertSessions(...));
+
+// 改善案
+Repository.ExecuteNonQuery(
+    context: context,
+    transactional: true,  // トランザクションを有効化
+    statements: Rds.UpdateOrInsertSessions(...));
+```
+
+ただし、`READ COMMITTED`（SQL Server のデフォルト分離レベル）ではレースコンディション自体は回避できない。エラーハンドリング（try-catch + リトライ）が追加で必要となる。
+
+### 中期対策: データベースネイティブのUPSERT構文の採用
+
+各データベースが提供するアトミックな UPSERT 構文に置き換える。
+
+| データベース | 推奨構文                               | 特徴                      |
+| ------------ | -------------------------------------- | ------------------------- |
+| SQL Server   | `MERGE ... WHEN MATCHED / NOT MATCHED` | 単一文でアトミック        |
+| PostgreSQL   | `INSERT ... ON CONFLICT DO UPDATE`     | 主キー/ユニーク制約ベース |
+| MySQL        | `INSERT ... ON DUPLICATE KEY UPDATE`   | 主キー/ユニーク制約ベース |
+
+PostgreSQL での例:
+
+```sql
+INSERT INTO "Sessions"
+  ("Creator","Updator","SessionGuid","Key","Page","Value","ReadOnce","UserArea")
+VALUES
+  (@U, @U, @SessionGuid, @Key, @Page, @Value, @ReadOnce, @UserArea)
+ON CONFLICT ("SessionGuid", "Key", "Page")
+DO UPDATE SET
+  "Updator" = @U,
+  "UpdatedTime" = now() at time zone 'UTC',
+  "Value" = @Value,
+  "ReadOnce" = @ReadOnce,
+  "UserArea" = @UserArea;
+```
+
+### 長期対策: KVS の活用
+
+`Parameters.Session.UseKeyValueStore = true` とし、Redis を使用する。
+Redis の `HashSet` はアトミックな操作であり、PRIMARY KEY 違反は原理的に発生しない。
+ただし、UserArea データは常に RDB に保存されるため、UserArea に対しては引き続きこの問題が残る。
+
+---
+
+## 結論
+
+| 項目                       | 内容                                                                                                      |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| PRIMARY KEY 違反の発生可否 | 発生し得る                                                                                                |
+| 原因                       | `UpdateOrInsert` パターンがアトミックでないため、同一キーへの並行書き込みでレースコンディションが発生する |
+| 発生しやすいシナリオ       | 新規セッション確立直後の並行リクエスト（ページ表示と非同期 API コールの同時実行等）                       |
+| 影響範囲                   | SQL Server / PostgreSQL / MySQL すべてで発生し得る                                                        |
+| エラーの影響               | セッションデータの保存に失敗するが、次回リクエストで再試行されるため致命的ではない                        |
+| 推奨対策                   | データベースネイティブの UPSERT 構文（`MERGE` / `ON CONFLICT` / `ON DUPLICATE KEY UPDATE`）への置き換え   |
+
+---
+
+## 関連ドキュメント
+
+- [Sessions API セッション有効期間](001-セッション有効期間.md)
+- [Session 管理の実装](002-セッション管理.md)
+- [Upsert API 実装](../03-データ操作・API/001-Upsert-API.md)（同様のレースコンディションの分析）

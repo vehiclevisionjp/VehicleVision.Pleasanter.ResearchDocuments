@@ -26,6 +26,12 @@
 - [既存コードへの改修箇所](#既存コードへの改修箇所)
     - [改修対象一覧](#改修対象一覧)
     - [段階的な導入計画](#段階的な導入計画)
+- [テンプレート JSON の自動生成](#テンプレート-json-の自動生成)
+    - [課題: 編集テンプレートの消失](#課題-編集テンプレートの消失)
+    - [解決策: Code First によるテンプレート JSON 生成](#解決策-code-first-によるテンプレート-json-生成)
+    - [生成タイミングと配布方法の比較](#生成タイミングと配布方法の比較)
+    - [テンプレート JSON の付加価値](#テンプレート-json-の付加価値)
+    - [推奨](#推奨)
 - [複合型プロパティの扱い](#複合型プロパティの扱い)
     - [ネストオブジェクトのデフォルト値比較](#ネストオブジェクトのデフォルト値比較)
     - [コンストラクタで初期化されるクラス](#コンストラクタで初期化されるクラス)
@@ -782,14 +788,14 @@ sequenceDiagram
 
 ### 改修対象一覧
 
-| 改修対象                                        | 内容                                                     | 工数 |
-| ----------------------------------------------- | -------------------------------------------------------- | :--: |
-| `Implem.ParameterAccessor/Parts/*.cs`（約70件） | JSON の値をフィールド初期化子に転記                      |  中  |
-| `DefaultChangedInAttribute.cs`（新規）          | カスタム属性の定義                                       |  小  |
-| `DefaultChangeNotifier.cs`（新規）              | バージョン属性の走査・JSON 比較・通知ロジック            |  小  |
-| `DefaultsSnapshot.cs`（新規）                   | フォールバック用スナップショット生成・比較・保存ロジック |  小  |
-| `Implem.DefinitionAccessor/Initializer.cs`      | `Read<T>(required: false)` への変更 + 通知処理の組み込み |  小  |
-| `Implem.CodeDefiner/Starter.cs`                 | `compare-defaults` サブコマンドの追加                    |  小  |
+| 改修対象                                        | 内容                                                         | 工数 |
+| ----------------------------------------------- | ------------------------------------------------------------ | :--: |
+| `Implem.ParameterAccessor/Parts/*.cs`（約70件） | JSON の値をフィールド初期化子に転記                          |  中  |
+| `DefaultChangedInAttribute.cs`（新規）          | カスタム属性の定義                                           |  小  |
+| `DefaultChangeNotifier.cs`（新規）              | バージョン属性の走査・JSON 比較・通知ロジック                |  小  |
+| `DefaultsSnapshot.cs`（新規）                   | フォールバック用スナップショット生成・比較・保存ロジック     |  小  |
+| `Implem.DefinitionAccessor/Initializer.cs`      | `Read<T>(required: false)` への変更 + 通知処理の組み込み     |  小  |
+| `Implem.CodeDefiner/Starter.cs`                 | `compare-defaults` / `generate-templates` サブコマンドの追加 |  小  |
 
 ### 段階的な導入計画
 
@@ -807,18 +813,190 @@ flowchart LR
     subgraph phase3["Phase 3: フォールバック + CodeDefiner"]
         C1["DefaultsSnapshot\n（フォールバック）の実装"]
         C2["compare-defaults\nサブコマンドの実装"]
+        C3["generate-templates\nサブコマンドの実装"]
     end
     phase1 --> phase2 --> phase3
 ```
 
-| Phase   | 内容                                                               | 前提条件     |
-| ------- | ------------------------------------------------------------------ | ------------ |
-| Phase 1 | C# クラスへのデフォルト値転記、`required: false` への切り替え      | なし         |
-| Phase 2 | バージョン属性の定義、通知ロジックの実装、Initializer への組み込み | Phase 1 完了 |
-| Phase 3 | スナップショット（フォールバック）、CodeDefiner サブコマンドの実装 | Phase 2 完了 |
+| Phase   | 内容                                                                                                            | 前提条件     |
+| ------- | --------------------------------------------------------------------------------------------------------------- | ------------ |
+| Phase 1 | C# クラスへのデフォルト値転記、`required: false` への切り替え                                                   | なし         |
+| Phase 2 | バージョン属性の定義、通知ロジックの実装、Initializer への組み込み                                              | Phase 1 完了 |
+| Phase 3 | スナップショット（フォールバック）、CodeDefiner サブコマンド（`compare-defaults` + `generate-templates`）の実装 | Phase 2 完了 |
 
 Phase 2 と Phase 3 は段階的に導入する。Phase 3 はフォールバックとしての役割が主であり、
 Phase 2 の導入後に属性の付け忘れが実運用上問題となるか観察してから着手しても遅くない。
+
+---
+
+## テンプレート JSON の自動生成
+
+### 課題: 編集テンプレートの消失
+
+案A を採用すると `App_Data/Parameters/` 配下の JSON ファイル（Extension フォルダを除く）は
+ユーザーがカスタマイズしたプロパティのみを記載する部分 JSON となり、
+最終的には空の `{}` やファイル自体が不要になる。
+
+現行の全プロパティ記載 JSON はパラメータの**編集テンプレート**としても機能しており、
+管理者はこれを参考にどのプロパティが存在し、どのような値が設定可能かを把握している。
+案A 採用後にこのテンプレートが失われると、管理者にとって不便である。
+
+```mermaid
+flowchart LR
+    subgraph current["現行方式"]
+        C1["Api.json\n（全プロパティ記載）"] --> C2["設定ファイル\nかつ\n編集テンプレート"]
+    end
+    subgraph planA["案A 採用後"]
+        A1["Api.json\n（部分 JSON）"] --> A2["設定ファイルのみ"]
+        A3["テンプレートが\n失われる"] -.->|"問題"| A2
+    end
+    current -->|"移行"| planA
+```
+
+### 解決策: Code First によるテンプレート JSON 生成
+
+C# パラメータクラスから `new T()` → `JsonConvert.SerializeObject()` で
+全プロパティのデフォルト値を含む JSON を自動生成する。
+この仕組みは方式1（スナップショット比較）のデフォルト値生成ロジックと同一であり、
+追加の実装コストは最小限で済む。
+
+```csharp
+/// <summary>
+/// パラメータクラスのデフォルト値を JSON テンプレートとして出力する。
+/// </summary>
+public static class ParameterTemplateGenerator
+{
+    public static void GenerateAll(string outputDir)
+    {
+        Directory.CreateDirectory(outputDir);
+        Generate<Api>(outputDir);
+        Generate<Script>(outputDir);
+        Generate<Security>(outputDir);
+        // ... 全パラメータクラス
+    }
+
+    private static void Generate<T>(string outputDir) where T : new()
+    {
+        var instance = new T();
+        // ラウンドトリップで [OnDeserialized] を発火させる
+        var json = JsonConvert.SerializeObject(instance, Formatting.Indented);
+        var roundTripped = JsonConvert.DeserializeObject<T>(json);
+        var templateJson = JsonConvert.SerializeObject(
+            roundTripped, Formatting.Indented);
+
+        var fileName = $"{typeof(T).Name}.json";
+        File.WriteAllText(
+            Path.Combine(outputDir, fileName), templateJson);
+    }
+}
+```
+
+### 生成タイミングと配布方法の比較
+
+テンプレート JSON の生成タイミングと配布方法について、以下の選択肢がある。
+
+| 方法                        | 生成タイミング       | 配布形態                           | 実装コスト |
+| --------------------------- | -------------------- | ---------------------------------- | :--------: |
+| A: CodeDefiner サブコマンド | 管理者が明示的に実行 | 任意のフォルダに出力               |     小     |
+| B: MSBuild ターゲット       | ビルド時に自動生成   | 別フォルダに同梱                   |     中     |
+| C: リリースパッケージに同梱 | CI/CD パイプラインで | 別の配布物（zip 等）としてまとめる |     小     |
+
+#### 方法A: CodeDefiner サブコマンド（推奨）
+
+CodeDefiner に `generate-templates` サブコマンドを追加し、管理者が必要なときにテンプレートを生成する。
+
+```bash
+# テンプレート JSON を指定フォルダに生成
+dotnet Implem.CodeDefiner.dll generate-templates /p:{出力先パス}
+
+# 例: App_Data/Parameters/_templates/ に生成
+dotnet Implem.CodeDefiner.dll generate-templates \
+  /p:App_Data/Parameters/_templates
+```
+
+```text
+App_Data/Parameters/
+├── Api.json                 ← ユーザー設定（部分 JSON）
+├── Script.json
+├── ...
+├── Extension/               ← 拡張設定（従来通り）
+│   └── ...
+└── _templates/              ← テンプレート（自動生成）
+    ├── .gitignore           ← Git 管理対象外
+    ├── Api.json             ← 全プロパティ + デフォルト値
+    ├── Script.json
+    └── ...
+```
+
+既存の CodeDefiner のコマンド体系（`_rds`, `rds`, `def`, `merge` 等）と一貫したインタフェースであり、
+管理者にとって馴染みやすい。
+また、`compare-defaults` サブコマンド（Phase 3）の実装基盤を共有できる。
+
+#### 方法B: MSBuild ターゲット
+
+`.csproj` にカスタム MSBuild ターゲットを追加し、ビルド時に自動生成する。
+
+```xml
+<!-- Implem.Pleasanter.csproj -->
+<Target Name="GenerateParameterTemplates" AfterTargets="Build">
+  <Exec Command="dotnet run --project ../Implem.CodeDefiner -- generate-templates /p:$(OutputPath)/App_Data/Parameters/_templates" />
+</Target>
+```
+
+ビルドのたびにテンプレートが生成されるため常に最新の状態が保たれるが、
+ビルド時間の増加や CI 環境での副作用に注意が必要。
+また、現行のプリザンターには MSBuild カスタムターゲットの利用実績がないため、
+保守性の観点から慎重な検討が必要。
+
+#### 方法C: リリースパッケージに同梱
+
+CI/CD パイプラインでテンプレート JSON を生成し、リリース配布物に同梱する。
+
+```text
+pleasanter-v1.5.1.0/
+├── Implem.Pleasanter/          ← 本体
+│   └── App_Data/Parameters/    ← ユーザー設定用（空 or 部分 JSON）
+└── ParameterTemplates/         ← テンプレート集（参照用）
+    ├── Api.json
+    ├── Script.json
+    └── ...
+```
+
+本体とテンプレートを分離して配布することで、
+ユーザー設定を上書きするリスクを排除できる。
+
+### テンプレート JSON の付加価値
+
+自動生成するテンプレート JSON には、以下の情報を付加することで編集補助としての価値を高められる。
+
+```jsonc
+// _templates/Script.json（生成例）
+{
+    // ServerScriptTimeOut: サーバースクリプトのタイムアウト（ミリ秒）
+    // [DefaultChangedIn v1.5.1.0] 10000 → 30000（タイムアウトを延長）
+    "ServerScriptTimeOut": 30000,
+
+    // ServerScriptTimeOutMax: サーバースクリプトのタイムアウト上限（ミリ秒）
+    "ServerScriptTimeOutMax": 172800000,
+
+    // ServerScript: サーバースクリプト機能の有効/無効
+    "ServerScript": true,
+}
+```
+
+`[DefaultChangedIn]` 属性の情報を JSON コメント（JSONC 形式）として出力すれば、
+管理者はテンプレートを見るだけで「いつ・何が・なぜ変わったか」を把握できる。
+ただし、標準の JSON パーサーではコメントを扱えないため、
+テンプレートはあくまで参照用であり、そのままユーザー設定にコピーする際はコメントを除去する必要がある。
+
+### 推奨
+
+テンプレート JSON 生成は **方法A（CodeDefiner サブコマンド）** を推奨する。
+Phase 3 の `compare-defaults` サブコマンドと実装基盤を共有でき、
+追加の実装コストが最小限で済む。
+
+導入計画としては Phase 3 に含め、`compare-defaults` と `generate-templates` を
+同時に実装することで効率的に進められる。
 
 ---
 
@@ -888,7 +1066,7 @@ private void OnDeserialized(StreamingContext streamingContext)
 | デフォルト値検知 | **方式6（バージョン属性）を主軸**。方式1（スナップショット）をフォールバック、方式2（CodeDefiner サブコマンド）を補助的に利用                           |
 | 検知の仕組み     | `[DefaultChangedIn]` 属性でバージョン境界を判定し、ユーザー JSON に未記載のプロパティのみ変更理由付きで警告。属性なしの変更はスナップショット比較で検出 |
 | ログ出力         | WARN レベルで変更バージョン・変更理由・新旧値を出力。ユーザー JSON に記載済みのプロパティは警告対象外                                                   |
-| 導入計画         | Phase 1（デフォルト値整備）→ Phase 2（バージョン属性による検知）→ Phase 3（スナップショットフォールバック + CodeDefiner 拡張）                          |
+| 導入計画         | Phase 1（デフォルト値整備）→ Phase 2（バージョン属性による検知）→ Phase 3（スナップショットフォールバック + CodeDefiner 拡張 + テンプレート生成）       |
 | 既存環境への影響 | 既存の全プロパティ記載 JSON はそのまま動作し、破壊的変更なし。通知は WARN ログ出力のみで動作には影響しない                                              |
 
 ## 関連ソースコード

@@ -18,9 +18,10 @@
     - [方式3: デフォルト値マニフェスト同梱方式](#方式3-デフォルト値マニフェスト同梱方式)
     - [方式4: `[DefaultValue]` 属性の標準化 + 起動時バリデーション](#方式4-defaultvalue-属性の標準化--起動時バリデーション)
     - [方式5: ソースコード差分方式（Git タグ間比較）](#方式5-ソースコード差分方式git-タグ間比較)
+    - [方式6: バージョン属性方式（変更バージョンタグ + JSON 比較）](#方式6-バージョン属性方式変更バージョンタグ--json-比較)
 - [方式の比較](#方式の比較)
 - [推奨方式](#推奨方式)
-    - [方式1 + 方式2 のハイブリッド](#方式1--方式2-のハイブリッド)
+    - [方式6（バージョン属性）を主軸とした構成](#方式6バージョン属性を主軸とした構成)
     - [詳細設計](#詳細設計)
 - [既存コードへの改修箇所](#既存コードへの改修箇所)
     - [改修対象一覧](#改修対象一覧)
@@ -401,83 +402,296 @@ git diff v1.5.0.0..v1.5.1.0 -- Implem.ParameterAccessor/Parts/
 
 ---
 
+### 方式6: バージョン属性方式（変更バージョンタグ + JSON 比較）
+
+プロパティに「いつのバージョンでデフォルト値が変わったか」を示すカスタム属性を付与し、
+バージョンアップ時にそのバージョンをまたぐ場合のみ、
+ユーザーの JSON と比較して通知する方式。
+
+#### 仕組み
+
+```mermaid
+flowchart TD
+    A["アプリ起動"] --> B["前回実行バージョンを読み込み\n（保存済み）"]
+    B --> C["現在の DLL バージョンと比較"]
+    C --> D{"バージョンが\n変わった?"}
+    D -->|いいえ| E["通常起動"]
+    D -->|はい| F["各パラメータクラスの\nプロパティを走査"]
+    F --> G["[DefaultChangedIn] 属性を持つ\nプロパティを抽出"]
+    G --> H{"属性のバージョンが\n旧→新の範囲内?"}
+    H -->|いいえ| I["スキップ"]
+    H -->|はい| J{"ユーザー JSON に\nそのプロパティが\n記載されている?"}
+    J -->|はい| K["影響なし（スキップ）"]
+    J -->|いいえ| L["WARN: デフォルト値変更を通知"]
+    L --> M["現在のバージョンを保存"]
+    E --> M
+```
+
+#### カスタム属性の定義
+
+```csharp
+/// <summary>
+/// デフォルト値が変更されたバージョンを示す属性。
+/// バージョンアップ時にこのバージョンをまたぐ場合、
+/// ユーザー JSON に未記載であれば警告を出力する。
+/// </summary>
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field,
+    AllowMultiple = true)]  // 複数回のデフォルト値変更に対応
+public class DefaultChangedInAttribute : Attribute
+{
+    public string Version { get; }
+    public string OldValue { get; set; }
+    public string NewValue { get; set; }
+    public string Description { get; set; }
+
+    public DefaultChangedInAttribute(string version)
+    {
+        Version = version;
+    }
+}
+```
+
+#### パラメータクラスでの使用例
+
+```csharp
+public class Script
+{
+    [DefaultChangedIn("1.5.1.0",
+        OldValue = "10000",
+        NewValue = "30000",
+        Description = "サーバースクリプトのタイムアウトを延長")]
+    public long ServerScriptTimeOut { get; set; } = 30000;
+
+    [DefaultChangedIn("1.5.1.0",
+        OldValue = "86400000",
+        NewValue = "172800000")]
+    public int ServerScriptTimeOutMax { get; set; } = 172800000;
+
+    // デフォルト値が2回変更された例
+    [DefaultChangedIn("1.4.0.0",
+        OldValue = "false", NewValue = "true",
+        Description = "サーバースクリプトをデフォルト有効化")]
+    [DefaultChangedIn("1.6.0.0",
+        OldValue = "true", NewValue = "false",
+        Description = "セキュリティ強化のため既定で無効化")]
+    public bool ServerScript { get; set; } = false;
+}
+```
+
+#### 検知ロジックの実装イメージ
+
+```csharp
+public static class DefaultChangeNotifier
+{
+    private const string VersionFilePath =
+        "App_Data/Parameters/.last-run-version";
+
+    public static void CheckAndNotify<T>(string userJson) where T : new()
+    {
+        var lastVersion = ReadLastVersion();
+        var currentVersion = GetCurrentAppVersion();
+        if (lastVersion == null || lastVersion == currentVersion)
+            return;
+
+        var lastVer = new Version(lastVersion);
+        var currVer = new Version(currentVersion);
+        var userObj = string.IsNullOrEmpty(userJson)
+            ? new JObject()
+            : JObject.Parse(userJson);
+        var name = typeof(T).Name;
+
+        foreach (var member in typeof(T).GetMembers(
+            BindingFlags.Public | BindingFlags.Instance))
+        {
+            var attrs = member
+                .GetCustomAttributes<DefaultChangedInAttribute>();
+            foreach (var attr in attrs)
+            {
+                var changedVer = new Version(attr.Version);
+                // 旧バージョン < 変更バージョン <= 新バージョン の場合のみ通知
+                if (lastVer < changedVer && changedVer <= currVer)
+                {
+                    // ユーザー JSON に記載されていなければ警告
+                    if (!userObj.ContainsKey(member.Name))
+                    {
+                        Console.WriteLine(
+                            $"[WARN] {name}.{member.Name}: "
+                            + $"v{attr.Version} でデフォルト値が変更 "
+                            + $"({attr.OldValue} → {attr.NewValue})"
+                            + (attr.Description != null
+                                ? $" - {attr.Description}" : ""));
+                    }
+                }
+            }
+        }
+    }
+
+    public static void SaveCurrentVersion()
+    {
+        File.WriteAllText(
+            VersionFilePath, GetCurrentAppVersion());
+    }
+}
+```
+
+#### 出力イメージ
+
+```text
+[2026-03-07 09:00:00] [WARN] バージョンアップに伴うデフォルト値変更:
+[2026-03-07 09:00:00] [WARN]   Script.ServerScriptTimeOut:
+    v1.5.1.0 でデフォルト値が変更 (10000 → 30000)
+    - サーバースクリプトのタイムアウトを延長
+[2026-03-07 09:00:00] [WARN]   Script.ServerScriptTimeOutMax:
+    v1.5.1.0 でデフォルト値が変更 (86400000 → 172800000)
+[2026-03-07 09:00:00] [WARN] 上記のプロパティは JSON に未記載のため
+    新しいデフォルト値が適用されます。
+[2026-03-07 09:00:00] [WARN] 旧デフォルト値に戻す場合は
+    パラメータ JSON に明示的に値を記載してください。
+```
+
+#### 方式1（スナップショット）との比較
+
+| 観点                     | 方式1: スナップショット                  | 方式6: バージョン属性                                |
+| ------------------------ | ---------------------------------------- | ---------------------------------------------------- |
+| 外部ファイルの必要性     | `.defaults-snapshot/` ディレクトリが必要 | バージョン番号1つのみ（小さなファイル）              |
+| 変更理由の伝達           | 値の差分のみ（理由は不明）               | `Description` で変更理由を伝達可能                   |
+| 変更バージョンの特定     | 不可（前回起動時との差分のみ）           | 属性で明示的に記録されている                         |
+| 複数バージョンスキップ時 | 前回起動時との差分のみ検出               | スキップしたバージョン全ての変更を個別に通知可能     |
+| 開発者の作業負荷         | なし（自動検出）                         | デフォルト値変更時に属性の追記が必要                 |
+| 属性の付け忘れリスク     | なし                                     | あり（ただしコードレビューで検出可能）               |
+| ダウングレード対応       | 前回スナップショットとの比較で対応       | `changedVer <= currVer` の条件を調整すれば対応可能   |
+| 初回起動時の動作         | スナップショットがないため検知不可       | バージョンファイルがなければ全属性をスキャンして通知 |
+
+#### 評価
+
+| 項目             | 評価                                                                 |
+| ---------------- | -------------------------------------------------------------------- |
+| 検知タイミング   | 起動時に自動検知                                                     |
+| 検知精度         | 高（バージョン境界 + JSON 有無の二重判定）                           |
+| 実装コスト       | 小（カスタム属性 + リフレクション。外部ファイルは最小限）            |
+| 運用負荷         | 小（起動時自動動作。開発者はデフォルト値変更時に属性を追記するだけ） |
+| 変更理由の伝達   | 可能（`Description` プロパティで変更理由を記述可能）                 |
+| 外部ファイル管理 | バージョン番号1ファイルのみ（スナップショット不要）                  |
+| 制約             | 開発者が属性を付け忘れると検知漏れが発生する                         |
+| 本体改修         | 必要                                                                 |
+
+---
+
 ## 方式の比較
 
-| 方式                                  | 自動検知 | 精度 | 実装コスト | 運用負荷 | 本体改修 |
-| ------------------------------------- | :------: | :--: | :--------: | :------: | :------: |
-| **1: スナップショット比較（起動時）** | **自動** |  高  |   **小**   | **なし** |   必要   |
-| 2: CodeDefiner サブコマンド           |   手動   |  高  |     中     |    小    |   必要   |
-| 3: デフォルト値マニフェスト同梱       |   自動   |  高  |     大     |   なし   |   必要   |
-| 4: `[DefaultValue]` 属性標準化        |   自動   |  中  |     中     |    中    |   必要   |
-| 5: ソースコード差分（Git タグ間）     |   手動   |  高  |     小     |    中    |   不要   |
+| 方式                              | 自動検知 |  精度  | 実装コスト | 運用負荷 | 本体改修 | 変更理由の伝達 |
+| --------------------------------- | :------: | :----: | :--------: | :------: | :------: | :------------: |
+| 1: スナップショット比較（起動時） |   自動   |   高   |     小     |   なし   |   必要   |      不可      |
+| 2: CodeDefiner サブコマンド       |   手動   |   高   |     中     |    小    |   必要   |      不可      |
+| 3: デフォルト値マニフェスト同梱   |   自動   |   高   |     大     |   なし   |   必要   |      不可      |
+| 4: `[DefaultValue]` 属性標準化    |   自動   |   中   |     中     |    中    |   必要   |      不可      |
+| 5: ソースコード差分（Git タグ間） |   手動   |   高   |     小     |    中    |   不要   |      不可      |
+| **6: バージョン属性（変更タグ）** | **自動** | **高** |   **小**   |  **小**  | **必要** |    **可能**    |
 
 ---
 
 ## 推奨方式
 
-### 方式1 + 方式2 のハイブリッド
+### 方式6（バージョン属性）を主軸とした構成
 
-**方式1（スナップショット比較）** を主軸とし、**方式2（CodeDefiner サブコマンド）** を補助的に利用する構成を推奨する。
+**方式6（バージョン属性）** を主軸とし、
+**方式1（スナップショット比較）** をフォールバック、
+**方式2（CodeDefiner サブコマンド）** を補助的に利用する構成を推奨する。
+
+方式6は変更バージョンと変更理由をソースコード内に記録できるため、
+「いつ・なぜ変更されたか」を管理者に伝達できる点で他の方式より優れている。
+属性の付け忘れに対するフォールバックとして方式1を併用することで、検知漏れを防止する。
 
 ```mermaid
 flowchart TD
-    subgraph primary["主軸: 方式1 - 起動時自動検知"]
-        P1["アプリ起動"] --> P2["new T() で\n現在の C# デフォルト値を取得"]
-        P2 --> P3["前回スナップショットと比較"]
-        P3 --> P4{"変更あり?"}
-        P4 -->|あり| P5["変更内容をログ出力\n（WARN レベル）"]
-        P4 -->|なし| P6["通常起動"]
-        P5 --> P7["新スナップショットを保存"]
-        P6 --> P7
+    subgraph primary["主軸: 方式6 - バージョン属性"]
+        P1["アプリ起動"] --> P2["前回実行バージョンを読み込み"]
+        P2 --> P3{"バージョンが\n変わった?"}
+        P3 -->|はい| P4["[DefaultChangedIn] 属性を走査"]
+        P4 --> P5["旧→新バージョン範囲内の\n変更をユーザー JSON と比較"]
+        P5 --> P6["変更理由付きで WARN 出力"]
+        P3 -->|いいえ| P7["通常起動"]
     end
-    subgraph secondary["補助: 方式2 - 明示的レポート"]
-        S1["dotnet Implem.CodeDefiner.dll\ncompare-defaults"] --> S2["全パラメータの\nデフォルト値一覧を出力"]
-        S2 --> S3["バージョンアップ前後の\n差分レポート"]
+    subgraph fallback["フォールバック: 方式1 - スナップショット"]
+        F1["属性なしのプロパティも\nスナップショット比較で検出"]
+        F2["属性付け忘れの\nセーフティネット"]
+    end
+    subgraph secondary["補助: 方式2 - CodeDefiner"]
+        S1["dotnet Implem.CodeDefiner.dll\ncompare-defaults"] --> S2["バージョンアップ前の\n事前確認レポート"]
     end
 ```
 
 #### 推奨理由
 
-| 理由                   | 説明                                                                                                 |
-| ---------------------- | ---------------------------------------------------------------------------------------------------- |
-| 実装コストが最小       | 方式1はリフレクション + JSON 比較のみで実現可能                                                      |
-| 自動検知で見落とし防止 | 起動時に自動で検知するため、管理者の作業忘れによる見落としがない                                     |
-| 既存の仕組みと整合     | `Read<T>()` の直後にスナップショット比較を挿入するだけで、既存のパラメータ読み込みフローを変更しない |
-| CodeDefiner で事前確認 | バージョンアップ前に差分を確認し、影響範囲を事前に把握できる                                         |
+| 理由                   | 説明                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| 変更理由を伝達可能     | `Description` に変更理由を記述でき、管理者が影響を判断しやすい               |
+| バージョン境界で判定   | 複数バージョンをスキップしたアップグレードでも、全ての変更を個別に通知できる |
+| 外部ファイルが最小限   | スナップショットディレクトリ不要。保存するのはバージョン番号1つのみ          |
+| フォールバックで安全   | 方式1を併用することで、属性の付け忘れがあっても検知漏れを防止                |
+| 自己文書化             | ソースコードを見るだけで「いつ・何が・なぜ変わったか」が分かる               |
+| CodeDefiner で事前確認 | バージョンアップ前に差分を確認し、影響範囲を事前に把握できる                 |
 
 ### 詳細設計
 
-#### スナップショットの保存場所
+#### バージョン番号の保存
+
+バージョン属性方式では、前回実行時のバージョン番号のみを保存すればよい。
 
 ```text
 App_Data/Parameters/
 ├── Api.json                  ← ユーザーパラメータ（部分 JSON）
 ├── Script.json
 ├── ...
-└── .defaults-snapshot/       ← デフォルト値スナップショット（自動生成）
-    ├── .gitignore            ← Git 管理対象外
-    ├── Api.json
-    ├── Script.json
-    └── ...
+└── .last-run-version         ← 前回実行バージョン（自動生成、1行テキスト）
 ```
 
-`.defaults-snapshot/` ディレクトリは自動生成・自動更新されるため、ユーザーが直接編集する必要はない。
+スナップショットディレクトリは方式1をフォールバックとして併用する場合にのみ使用する。
+
+```text
+App_Data/Parameters/
+├── ...
+├── .last-run-version
+└── .defaults-snapshot/       ← フォールバック用（方式1併用時のみ）
+    ├── .gitignore
+    ├── Api.json
+    └── Script.json
+```
 
 #### ログ出力の形式
 
+方式6による通知では、変更バージョンと変更理由が付与される。
+
 ```text
-[2026-03-07 09:00:00] [WARN] パラメータデフォルト値の変更を検知しました:
-[2026-03-07 09:00:00] [WARN]   Script.ServerScriptTimeOut: 10000 → 30000
-[2026-03-07 09:00:00] [WARN]   Script.ServerScriptTimeOutMax: 86400000 → 172800000
-[2026-03-07 09:00:00] [WARN]   Security.MinimumPasswordLength: 8 → 10
-[2026-03-07 09:00:00] [WARN] 上記のプロパティは JSON に未記載のためデフォルト値が適用されています。
+[2026-03-07 09:00:00] [WARN] バージョンアップに伴うデフォルト値変更を検知しました:
+[2026-03-07 09:00:00] [WARN]   Script.ServerScriptTimeOut:
+    v1.5.1.0 で変更 (10000 → 30000)
+    - サーバースクリプトのタイムアウトを延長
+[2026-03-07 09:00:00] [WARN]   Script.ServerScriptTimeOutMax:
+    v1.5.1.0 で変更 (86400000 → 172800000)
+[2026-03-07 09:00:00] [WARN]   Security.MinimumPasswordLength:
+    v1.5.1.0 で変更 (8 → 10)
+[2026-03-07 09:00:00] [WARN] 上記のプロパティは JSON に未記載のため
+    新しいデフォルト値が適用されています。
 [2026-03-07 09:00:00] [WARN] 変更を維持する場合は対応不要です。
-[2026-03-07 09:00:00] [WARN] 旧デフォルト値に戻す場合はパラメータ JSON に明示的に値を記載してください。
+[2026-03-07 09:00:00] [WARN] 旧デフォルト値に戻す場合は
+    パラメータ JSON に明示的に値を記載してください。
+```
+
+方式1（フォールバック）による通知では、属性のないプロパティの変更を検出する。
+
+```text
+[2026-03-07 09:00:00] [WARN] デフォルト値の変更を検知しました
+    （属性未付与のため詳細不明）:
+[2026-03-07 09:00:00] [WARN]   Rds.DeadlockRetryCount: 4 → 8
 ```
 
 #### JSON に記載済みのプロパティとの区別
 
-スナップショット比較だけではデフォルト値が変わったことしか分からない。**ユーザーの JSON に記載されていないプロパティのみ警告する**ためには、以下の追加処理が必要となる。
+方式6では `[DefaultChangedIn]` 属性を持つプロパティのみを対象とし、
+ユーザーの JSON に記載されているプロパティはスキップする。
+方式1（フォールバック）では、属性のないプロパティについて
+スナップショット比較とユーザー JSON の突き合わせを行う。
 
 ```csharp
 /// <summary>
@@ -527,26 +741,36 @@ sequenceDiagram
     participant App as アプリケーション
     participant Init as Initializer.SetParameters()
     participant Read as Read<T>()
-    participant Snap as DefaultsSnapshot
+    participant Notifier as DefaultChangeNotifier
+    participant Snap as DefaultsSnapshot（フォールバック）
     participant Log as ログ
 
     App->>Init: 起動
+    Init->>Init: 前回実行バージョンを読み込み
+    Init->>Init: バージョン変更を判定
+
     loop 各パラメータクラス T
         Init->>Read: Read<T>()
         Read-->>Init: パラメータ値（JSON + デフォルト）
 
-        Init->>Snap: CompareAndUpdate<T>(userJson)
-        Snap->>Snap: currentDefaults = new T()
-        Snap->>Snap: 前回スナップショットを読み込み
-        alt 前回スナップショットが存在する
-            Snap->>Snap: デフォルト値の差分を検出
-            Snap->>Snap: ユーザー JSON に未記載の<br/>変更プロパティを抽出
+        alt バージョンが変わった場合
+            Init->>Notifier: CheckAndNotify<T>(userJson)
+            Notifier->>Notifier: [DefaultChangedIn] 属性を走査
+            Notifier->>Notifier: バージョン範囲内の変更を抽出
+            Notifier->>Notifier: ユーザー JSON との突き合わせ
             alt 影響のある変更あり
-                Snap->>Log: WARN: デフォルト値変更の通知
+                Notifier->>Log: WARN: 変更バージョン・理由付きで通知
+            end
+
+            Init->>Snap: CompareAndUpdate<T>（フォールバック）
+            Snap->>Snap: 属性なしプロパティの変更を検出
+            alt 属性なしの変更あり
+                Snap->>Log: WARN: スナップショット差分の通知
             end
         end
-        Snap->>Snap: 現在のデフォルト値を<br/>スナップショットに保存
     end
+
+    Init->>Init: 現在のバージョンを保存
     Init-->>App: パラメータ初期化完了
 ```
 
@@ -558,12 +782,14 @@ sequenceDiagram
 
 ### 改修対象一覧
 
-| 改修対象                                        | 内容                                                       | 工数 |
-| ----------------------------------------------- | ---------------------------------------------------------- | :--: |
-| `Implem.ParameterAccessor/Parts/*.cs`（約70件） | JSON の値をフィールド初期化子に転記                        |  中  |
-| `Implem.DefinitionAccessor/Initializer.cs`      | `Read<T>(required: false)` への変更 + スナップショット比較 |  小  |
-| `DefaultsSnapshot.cs`（新規）                   | スナップショット生成・比較・保存ロジック                   |  小  |
-| `Implem.CodeDefiner/Starter.cs`                 | `compare-defaults` サブコマンドの追加                      |  小  |
+| 改修対象                                        | 内容                                                     | 工数 |
+| ----------------------------------------------- | -------------------------------------------------------- | :--: |
+| `Implem.ParameterAccessor/Parts/*.cs`（約70件） | JSON の値をフィールド初期化子に転記                      |  中  |
+| `DefaultChangedInAttribute.cs`（新規）          | カスタム属性の定義                                       |  小  |
+| `DefaultChangeNotifier.cs`（新規）              | バージョン属性の走査・JSON 比較・通知ロジック            |  小  |
+| `DefaultsSnapshot.cs`（新規）                   | フォールバック用スナップショット生成・比較・保存ロジック |  小  |
+| `Implem.DefinitionAccessor/Initializer.cs`      | `Read<T>(required: false)` への変更 + 通知処理の組み込み |  小  |
+| `Implem.CodeDefiner/Starter.cs`                 | `compare-defaults` サブコマンドの追加                    |  小  |
 
 ### 段階的な導入計画
 
@@ -573,24 +799,26 @@ flowchart LR
         A1["約70クラスに\nフィールド初期化子を追加"]
         A2["Read<T>(required: false)\nへの段階的切り替え"]
     end
-    subgraph phase2["Phase 2: 変更検知"]
-        B1["DefaultsSnapshot クラス\nの実装"]
-        B2["Initializer への\nスナップショット比較組み込み"]
+    subgraph phase2["Phase 2: バージョン属性による検知"]
+        B1["DefaultChangedInAttribute\nの実装"]
+        B2["DefaultChangeNotifier\nの実装"]
+        B3["Initializer への\n通知処理組み込み"]
     end
-    subgraph phase3["Phase 3: CodeDefiner 拡張"]
-        C1["compare-defaults\nサブコマンドの実装"]
-        C2["バージョンアップ手順への\n組み込み"]
+    subgraph phase3["Phase 3: フォールバック + CodeDefiner"]
+        C1["DefaultsSnapshot\n（フォールバック）の実装"]
+        C2["compare-defaults\nサブコマンドの実装"]
     end
     phase1 --> phase2 --> phase3
 ```
 
-| Phase   | 内容                                                          | 前提条件     |
-| ------- | ------------------------------------------------------------- | ------------ |
-| Phase 1 | C# クラスへのデフォルト値転記、`required: false` への切り替え | なし         |
-| Phase 2 | スナップショット比較による起動時自動検知の実装                | Phase 1 完了 |
-| Phase 3 | CodeDefiner サブコマンドによる明示的差分レポートの実装        | Phase 1 完了 |
+| Phase   | 内容                                                               | 前提条件     |
+| ------- | ------------------------------------------------------------------ | ------------ |
+| Phase 1 | C# クラスへのデフォルト値転記、`required: false` への切り替え      | なし         |
+| Phase 2 | バージョン属性の定義、通知ロジックの実装、Initializer への組み込み | Phase 1 完了 |
+| Phase 3 | スナップショット（フォールバック）、CodeDefiner サブコマンドの実装 | Phase 2 完了 |
 
-Phase 2 と Phase 3 は独立して実装可能であり、Phase 1 の完了後に並行して進められる。
+Phase 2 と Phase 3 は段階的に導入する。Phase 3 はフォールバックとしての役割が主であり、
+Phase 2 の導入後に属性の付け忘れが実運用上問題となるか観察してから着手しても遅くない。
 
 ---
 
@@ -654,14 +882,14 @@ private void OnDeserialized(StreamingContext streamingContext)
 
 ## 結論
 
-| 項目             | 内容                                                                                                                           |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 採用方式         | 案A（C# デフォルト値 + 部分 JSON 方式）                                                                                        |
-| デフォルト値検知 | **方式1（スナップショット比較）を主軸**とし、方式2（CodeDefiner サブコマンド）を補助的に利用                                   |
-| 検知の仕組み     | 起動時に `new T()` でデフォルト値を生成し、前回スナップショットと比較。ユーザー JSON に未記載のプロパティのみ変更を警告        |
-| ログ出力         | WARN レベルで変更内容を出力。ユーザー JSON に記載済みのプロパティは警告対象外                                                  |
-| 導入計画         | Phase 1（デフォルト値整備）→ Phase 2（起動時検知）→ Phase 3（CodeDefiner 拡張）の段階的導入                                    |
-| 既存環境への影響 | 既存の全プロパティ記載 JSON はそのまま動作し、破壊的変更なし。スナップショット比較による警告はログ出力のみで動作には影響しない |
+| 項目             | 内容                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 採用方式         | 案A（C# デフォルト値 + 部分 JSON 方式）                                                                                                                 |
+| デフォルト値検知 | **方式6（バージョン属性）を主軸**。方式1（スナップショット）をフォールバック、方式2（CodeDefiner サブコマンド）を補助的に利用                           |
+| 検知の仕組み     | `[DefaultChangedIn]` 属性でバージョン境界を判定し、ユーザー JSON に未記載のプロパティのみ変更理由付きで警告。属性なしの変更はスナップショット比較で検出 |
+| ログ出力         | WARN レベルで変更バージョン・変更理由・新旧値を出力。ユーザー JSON に記載済みのプロパティは警告対象外                                                   |
+| 導入計画         | Phase 1（デフォルト値整備）→ Phase 2（バージョン属性による検知）→ Phase 3（スナップショットフォールバック + CodeDefiner 拡張）                          |
+| 既存環境への影響 | 既存の全プロパティ記載 JSON はそのまま動作し、破壊的変更なし。通知は WARN ログ出力のみで動作には影響しない                                              |
 
 ## 関連ソースコード
 

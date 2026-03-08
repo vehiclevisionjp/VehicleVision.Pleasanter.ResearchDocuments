@@ -1,6 +1,8 @@
-# ServerScript TypeScript（および MS 系言語）対応の実現可能性調査
+# ServerScript 多言語対応の実現可能性調査（TypeScript・Ruby・その他）
 
-サーバースクリプト（ServerScript）に TypeScript をはじめとする MS 系言語サポートを追加するための実現可能性、実装方針、セキュリティ設計を調査する。Python 対応（[002-ServerScript-Python対応.md](002-ServerScript-Python対応.md)）で確立したセキュリティ原則・層分離設計を基準に、各言語の採用可否を評価する。
+サーバースクリプト（ServerScript）に JavaScript 以外のスクリプト言語サポートを追加するための実現可能性、
+実装方針、セキュリティ設計を幅広く調査する。Python 対応（[002-ServerScript-Python対応.md](002-ServerScript-Python対応.md)）で確立したセキュリティ原則・層分離設計を基準に、
+TypeScript・Ruby・PHP・JVM 系言語・その他の多様な候補について採用可否を評価する。
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
@@ -19,12 +21,14 @@
     - [ホストオブジェクトとの互換性](#ホストオブジェクトとの互換性)
     - [UI・エディタ対応](#uiエディタ対応)
     - [リスク評価](#リスク評価)
-- [他の MS 系言語候補の評価](#他の-ms-系言語候補の評価)
+- [他言語候補の評価](#他言語候補の評価)
     - [PowerShell](#powershell)
     - [F# Scripting（FSharp.Compiler.Service）](#f-scriptingfsharpcompilerservice)
     - [VBScript / VB.NET Script](#vbscript--vbnet-script)
-    - [Lua（MoonSharp）— 参考：MS 系ではないが比較対象として](#luamoonsharp-参考ms-系ではないが比較対象として)
-- [言語別比較マトリクス](#言語別比較マトリクス)
+    - [Lua（MoonSharp）](#luamoonsharp)
+    - [Ruby（IronRuby / MRuby）](#rubyironruby--mruby)
+    - [PHP（PeachPie）](#phppeachpie)
+    - [Groovy / Kotlin Script（IKVM.NET による JVM 模倣）](#groovy--kotlin-scriptikvmnet-による-jvm-模倣)
     - [基本特性](#基本特性)
     - [セキュリティ・サンドボックス](#セキュリティサンドボックス)
     - [実装コスト](#実装コスト)
@@ -54,9 +58,9 @@
 
 ## 調査目的
 
-- Python 対応で確立したセキュリティ原則・層分離設計を基準に、TypeScript をはじめとする MS 系言語の実現可能性を評価する
+- Python 対応で確立したセキュリティ原則・層分離設計を基準に、TypeScript・Ruby・PHP・Groovy など幅広いスクリプト言語の実現可能性を評価する
 - TypeScript を ServerScript に追加する具体的な実装方針（トランスパイル方式・エンジン設計・セキュリティ）を明らかにする
-- TypeScript 以外の MS 系言語（PowerShell、F#、VBScript）の採用可否を評価する
+- Ruby（MRuby / IronRuby）・PHP（PeachPie）・JVM 系言語（Groovy / Kotlin Script）などの採用可否を評価する
 - 実現可能な言語を比較マトリクスで整理し、導入優先度を明確にする
 
 ---
@@ -111,13 +115,17 @@ flowchart TB
 
 ## 候補言語の概観
 
-| 言語             | ライブラリ                          | MS 系 | サンドボックス                   | 推奨度 |
-| ---------------- | ----------------------------------- | ----- | -------------------------------- | ------ |
-| **TypeScript**   | 既存 ClearScript V8 + typescript.js | ◎     | V8 と同等（実行はJS）            | ◎ 推奨 |
-| **PowerShell**   | Microsoft.PowerShell.SDK            | ◎     | 困難（設計上 OS 操作前提）       | ×      |
-| **F# Scripting** | FSharp.Compiler.Service             | ○     | C# Script 相当（.NET CLR上）     | △      |
-| **VBScript**     | なし（非推奨）                      | △     | 困難（.NET 未対応）              | ×      |
-| **Lua**          | MoonSharp                           | ×     | 優秀（設計上サンドボックス前提） | ○ 参考 |
+| 言語              | ライブラリ                            | 系統     | サンドボックス                       | 推奨度 |
+| ----------------- | ------------------------------------- | -------- | ------------------------------------ | ------ |
+| **TypeScript**    | 既存 ClearScript V8 + typescript.js   | MS 系    | V8 と同等（実行は JS）               | ◎ 推奨 |
+| **Ruby (MRuby)**  | P/Invoke → libmruby（ネイティブ）     | 非 MS 系 | 設計的保証（標準ライブラリ除去可能） | △      |
+| **PHP**           | PeachPie Runtime（.NET コンパイル）   | 非 MS 系 | .NET CLR 上（C# Script 相当）        | △      |
+| **Groovy**        | IKVM.NET + Groovy runtime（JVM 模倣） | 非 MS 系 | JVM SecurityManager 廃止済み         | ×      |
+| **Kotlin Script** | IKVM.NET + Kotlin stdlib（JVM 模倣）  | 非 MS 系 | JVM SecurityManager 廃止済み         | ×      |
+| **PowerShell**    | Microsoft.PowerShell.SDK              | MS 系    | 困難（設計上 OS 操作前提）           | ×      |
+| **F# Scripting**  | FSharp.Compiler.Service               | MS 系    | C# Script 相当（.NET CLR 上）        | △      |
+| **VBScript**      | なし（非推奨）                        | MS 系    | 困難（.NET 未対応）                  | ×      |
+| **Lua**           | MoonSharp                             | 非 MS 系 | 優秀（設計上サンドボックス前提）     | ○      |
 
 ---
 
@@ -514,7 +522,7 @@ declare const items: {
 
 ---
 
-## 他の MS 系言語候補の評価
+## 他言語候補の評価
 
 ### PowerShell
 
@@ -646,7 +654,7 @@ VBScript / VB.NET Script はいずれも**採用不可**。
 
 ---
 
-### Lua（MoonSharp）— 参考：MS 系ではないが比較対象として
+### Lua（MoonSharp）
 
 #### 概要
 
@@ -656,7 +664,7 @@ VBScript / VB.NET Script はいずれも**採用不可**。
 | NuGet        | `MoonSharp` v2.0.0（MIT、純粋 C# 実装、約 1 MB）                             |
 | ランタイム   | 独立した Lua VM（.NET CLR とは分離）                                         |
 | .NET 10 対応 | Yes                                                                          |
-| MS 系        | ×（ゲームスクリプティングが主用途）                                          |
+| 系統         | 非 MS 系（ゲームスクリプティングが主用途）                                   |
 
 #### セキュリティ評価
 
@@ -689,46 +697,297 @@ MoonSharp のサンドボックスモデル:
 
 #### 結論
 
-Lua（MoonSharp）は MS 系ではないため**今回の対象外**だが、サンドボックス設計の参考として価値がある。  
-IronPython よりもサンドボックスの構造的安全性が高く、ExpandoObject との連携が改善できれば  
-将来的な選択肢として検討の余地がある。
+Lua（MoonSharp）はサンドボックス設計が優秀であり、有力な候補の一つ。  
+IronPython よりもサンドボックスの構造的安全性が高く、軽量（NuGet 約 1 MB）かつ純粋 C# 実装のため依存が少ない。  
+`ExpandoObject` との連携は `IDictionary` 経由になるため JavaScript/Python と比べて若干手間がかかるが、  
+ラッパーを実装することで十分解決可能。**中優先度で検討を推奨する**。
 
 ---
 
-## 言語別比較マトリクス
+### Ruby（IronRuby / MRuby）
+
+#### 概要
+
+Ruby を .NET 上で実行するには、主に 2 つのアプローチが存在する。
+
+| 実装        | 概要                                      | 状況                                                               |
+| ----------- | ----------------------------------------- | ------------------------------------------------------------------ |
+| IronRuby    | .NET ネイティブな Ruby 実装（DLR ベース） | **廃止**。最終リリース 1.1.3（2011年）。.NET 10 非対応。           |
+| MRuby       | 組み込み向け軽量 Ruby（C 実装）           | アクティブ。v3.3.x（2024年）。C API 経由で .NET から呼び出し可能。 |
+| TruffleRuby | GraalVM ベース Ruby                       | JVM/ネイティブ依存。重すぎて採用不可。                             |
+
+**IronRuby は廃止**のため、実現可能な選択肢は **MRuby のみ**。
+
+| 項目         | 内容                                                            |
+| ------------ | --------------------------------------------------------------- |
+| 開発元       | Yukihiro Matsumoto ほか（MIT）                                  |
+| .NET 連携    | P/Invoke で `libmruby.dll`（ネイティブライブラリ）を呼び出す    |
+| NuGet        | 公式パッケージなし。`libmruby` を手動ビルド or 非公式パッケージ |
+| ランタイム   | C で実装された独立した Ruby VM                                  |
+| .NET 10 対応 | P/Invoke 経由のため .NET バージョン依存なし                     |
+
+#### MRuby の .NET 統合方式
+
+```mermaid
+flowchart LR
+    subgraph DotNet[".NET（C#）"]
+        US["MRubyScriptEngine"]
+        PI["P/Invoke"]
+    end
+
+    subgraph Native["ネイティブ（C）"]
+        LIB["libmruby.dll\n（.so / .dylib）"]
+        VM["MRuby VM\nmrb_state"]
+    end
+
+    US -->|mrb_load_string等| PI --> LIB --> VM
+    VM -->|mrb_value| PI --> US
+```
+
+MRuby は `mrb_state`（インタープリタ状態）を C# 側でポインタとして管理し、  
+P/Invoke で `mrb_load_string()` / `mrb_funcall()` 等を呼び出す。
+
+ホストオブジェクトの注入は `mrb_define_method()` と `mrb_data_wrap_struct()` を使用し、  
+C# オブジェクトを GCHandle で固定して MRuby 側に公開する。
+
+#### セキュリティ評価
+
+MRuby はサンドボックス向けに設計されており、**標準ライブラリを選択的に除去できる**。
+
+| 操作               | MRuby のデフォルト    | サンドボックス構成後        |
+| ------------------ | --------------------- | --------------------------- |
+| ファイル I/O       | `File` クラスあり     | ビルド時に除去可能          |
+| プロセス実行       | `Process` クラスあり  | ビルド時に除去可能          |
+| ネットワーク       | `Socket` なし（標準） | 追加しなければ不可          |
+| .NET interop       | なし                  | P/Invoke 経由のみ（制御可） |
+| `eval` / `require` | あり                  | ホワイトリスト制御が必要    |
+
+```text
+MRuby のサンドボックスモデル:
+  ┌──────────────────────────────────────────────────┐
+  │  Ruby スクリプト                                  │
+  │  File/Process = ビルド時除去可能（設計的保証）    │
+  │  .NET interop = P/Invoke コールバックのみ         │
+  └──────────────────────────────────────────────────┘
+  ※ V8 の「原理的保証」ではなく「設計的保証」
+```
+
+**IronPython との比較：**
+
+| 観点               | IronPython                 | MRuby                             |
+| ------------------ | -------------------------- | --------------------------------- |
+| .NET との統合      | DLR ネイティブ（容易）     | P/Invoke（中程度の複雑さ）        |
+| サンドボックス     | 4 層ロックダウン（実装的） | ビルド時除去（設計的）            |
+| ExpandoObject 対応 | ネイティブ（DLR）          | P/Invoke コールバック（実装必要） |
+| NuGet パッケージ   | `IronPython` 3.4.x         | 公式なし（要手動ビルド）          |
+| ネイティブ DLL     | なし                       | **あり**（platform 別ビルド必要） |
+
+#### リスク評価
+
+| リスク                              | 影響度 | 対策                                                 |
+| ----------------------------------- | ------ | ---------------------------------------------------- |
+| ネイティブ DLL 依存                 | 高     | Linux / Windows / macOS 用に platform 別ビルドが必要 |
+| P/Invoke マーシャリングの複雑さ     | 中     | GCHandle / SafeHandle でライフサイクル管理           |
+| 公式 NuGet パッケージがない         | 中     | 独自ラッパーの保守が必要                             |
+| `eval` / `require` によるエスケープ | 中     | フック関数で制限可能だが実装コスト高                 |
+
+#### 結論
+
+MRuby は技術的には実現可能だが、**公式 NuGet パッケージなし・ネイティブ DLL 依存**という大きな制約がある。  
+IronPython と比べて .NET との統合コストが高く、プラットフォーム別ビルド管理も必要。  
+サンドボックス設計は優秀だが、実装リスクが高いため**低優先度**での検討に留める。  
+MRuby の NuGet ラッパーが成熟した場合（例: `MRuby.NET` 相当）は再評価の余地がある。
+
+---
+
+### PHP（PeachPie）
+
+#### 概要
+
+PeachPie は PHP ソースコードを .NET アセンブリにコンパイルするコンパイラ・ランタイムである。
+
+| 項目         | 内容                                                                   |
+| ------------ | ---------------------------------------------------------------------- |
+| 開発元       | Ioleta s.r.o.（MIT）                                                   |
+| NuGet        | `Peachpie.Runtime` + `Peachpie.Library` + `Peachpie.Compiler.Services` |
+| ランタイム   | .NET CLR 上で直接実行（PHP を .NET IL にコンパイル）                   |
+| .NET 10 対応 | Yes（Peachpie 1.x 系）                                                 |
+| PHP 互換性   | PHP 7.x 相当（一部機能は未対応）                                       |
+
+#### 実行アーキテクチャ
+
+```mermaid
+flowchart LR
+    subgraph PeachPie["PeachPie コンパイラ"]
+        PHP["PHP ソースコード"]
+        COMP["Peachpie.Compiler.Services\n動的コンパイル"]
+        IL[".NET IL アセンブリ"]
+    end
+
+    subgraph Runtime["実行時"]
+        CLR[".NET CLR"]
+        RT["Peachpie.Runtime\nContext / PhpValue"]
+    end
+
+    PHP -->|コンパイル| COMP --> IL --> CLR
+    RT --> CLR
+```
+
+ホストオブジェクトの注入は `Peachpie.Runtime.Context` を通じて行う。  
+PHP スクリプトから C# オブジェクトを `$context->someObject` のように参照できる。
+
+#### セキュリティ評価
+
+PeachPie は PHP → .NET IL にコンパイルして CLR 上で実行するため、  
+セキュリティモデルは **C# Script（Roslyn）と同等**の問題を抱える。
+
+| 問題                              | PeachPie での状況                                               |
+| --------------------------------- | --------------------------------------------------------------- |
+| .NET CLR 直接アクセス             | PHP から `new \System\IO\File()` 等で .NET クラスにアクセス可能 |
+| `file_get_contents` 等の PHP 関数 | PHP 標準ライブラリがコンパイル時に同梱される                    |
+| `exec()` / `system()`             | PHP 標準の OS コマンド実行関数が利用可能                        |
+| リフレクション                    | `ReflectionClass` / .NET リフレクション経由で可能               |
+
+PeachPie には `PhpContext.Configure()` で PHP 設定を制御できるが、  
+`disable_functions` 相当のホワイトリスト制御は **ランタイムレベルでは困難**。  
+`file_get_contents`・`exec` 等の危険な PHP 関数を完全に封鎖するには  
+Peachpie のコンパイラ拡張（カスタムリライター）が必要となり、実装コストが高い。
+
+また PeachPie プロジェクト自体の**メンテナンス状況が不安定**（2023 年以降の更新が散発的）であり、  
+長期的な保守リスクも高い。
+
+#### 結論
+
+PHP（PeachPie）は**採用不推奨**。
+
+セキュリティモデルの課題（C# Script 相当）に加え、プロジェクトの活動停滞リスクがある。  
+PHP は Web アプリケーション記述が主目的であり、ServerScript の用途（値操作・バリデーション）とは  
+ユーザー層・文化的背景のミスマッチも大きい。
+
+---
+
+### Groovy / Kotlin Script（IKVM.NET による JVM 模倣）
+
+#### 概要
+
+IKVM.NET は JVM バイトコードを .NET CLR 上で実行するツールである。  
+Groovy・Kotlin Script・Scala Script など JVM 系言語のスクリプティングを .NET 上で実現するために使用できる。
+
+| 項目           | 内容                                                           |
+| -------------- | -------------------------------------------------------------- |
+| IKVM.NET       | `IKVM` NuGet（8.x、.NET 6+ 対応）                              |
+| Groovy runtime | `groovy-jsr223` + IKVM.NET 変換（jar → .NET アセンブリ）       |
+| Kotlin Script  | `kotlin-script-hosting` + IKVM.NET 変換                        |
+| 追加依存サイズ | IKVM.NET ~30 MB + Groovy runtime ~25 MB = **合計 ~55 MB 以上** |
+| .NET 10 対応   | IKVM.NET 8.x は .NET 6+ 対応。.NET 10 は未検証                 |
+
+#### アーキテクチャ
+
+```mermaid
+flowchart TB
+    subgraph DotNet[".NET（C#）"]
+        GS["GroovyShell / KotlinScript"]
+        IKVM["IKVM.NET\n（JVM バイトコード実行）"]
+        JCL["JDK クラスライブラリ\n（IKVM 版）"]
+    end
+
+    subgraph Groovy["Groovy / Kotlin スクリプト"]
+        SCRIPT["スクリプト本体"]
+    end
+
+    SCRIPT --> GS --> IKVM --> JCL
+    JCL -->|JVM API エミュレーション| IKVM
+```
+
+#### セキュリティ評価
+
+Java の `SecurityManager` は **Java 17 で deprecated、Java 21 で削除**されており、  
+JVM 系言語のサンドボックス機構として最も重要なコンポーネントが失われている。
+
+現在の JVM におけるサンドボックス代替は Java モジュールシステム（JPMS）だが、  
+スクリプト実行のホスト分離には適していない（モジュール境界はコンパイル時静的に決まる）。
+
+| 問題                                     | 状況                                          |
+| ---------------------------------------- | --------------------------------------------- |
+| `SecurityManager` 廃止                   | Java 17 以降で使用不可。IKVM も同様。         |
+| Groovy `@groovy.transform.CompileStatic` | 型安全性は向上するがサンドボックスとは別問題  |
+| OS 操作                                  | `new File().text`・`"cmd".execute()` 等で可能 |
+| .NET interop 経由の迂回                  | IKVM 上で `.NET` クラスへのアクセス経路が存在 |
+| 依存サイズ                               | ~55 MB 以上（IronPython ~15 MB の 3 倍以上）  |
+
+IKVM.NET 経由での Groovy/Kotlin 実行は、技術的に**動作させること自体は可能**だが、  
+サンドボックスを ServerScript の要件レベルで実現するための方法が現時点で存在しない。
+
+#### Groovy 固有の評価
+
+| 観点               | 内容                                                     |
+| ------------------ | -------------------------------------------------------- |
+| 言語の親しみやすさ | Java/Groovy 経験者には馴染みやすい                       |
+| 動的型付け         | Python と同様の動的スクリプティングが可能                |
+| ExpandoObject 対応 | `Map` / `Expando` 経由で近い操作が可能（変換コストあり） |
+| エコシステム       | Apache プロジェクト。メンテナンスは継続中                |
+
+#### Kotlin Script 固有の評価
+
+| 観点               | 内容                                                 |
+| ------------------ | ---------------------------------------------------- |
+| 言語の親しみやすさ | Kotlin 経験者には馴染みやすい。TypeScript に似た文法 |
+| 型安全性           | TypeScript と同様の静的型付けが可能                  |
+| ExpandoObject 対応 | 動的型アクセスには `dynamic`/Map 変換が必要          |
+| 起動コスト         | Kotlin Scripting Host の初期化が重い（~数秒）        |
+
+#### 結論
+
+Groovy / Kotlin Script（IKVM.NET）は**採用不可**。
+
+`SecurityManager` の廃止により JVM 系言語のサンドボックスは現在実現困難。  
+依存サイズが大きく（~55 MB 以上）、IKVM.NET 経由の動作は .NET 10 での安定性が未確認。  
+Kotlin の文法が TypeScript に近い点は魅力的だが、上記リスクが解消されるまで採用を見合わせる。
 
 ### 基本特性
 
-| 言語                 | 実行環境               | MS 系 | 既存 JS スクリプトとの互換性 | NuGet 依存                                |
-| -------------------- | ---------------------- | ----- | ---------------------------- | ----------------------------------------- |
-| TypeScript           | V8（トランスパイル後） | ◎     | ◎（JS は有効な TS）          | なし（ts.js のみ）                        |
-| Python（IronPython） | IronPython DLR         | △     | ×                            | `IronPython` 3.4.x                        |
-| C# Script            | .NET CLR               | ◎     | ×                            | `Microsoft.CodeAnalysis.CSharp.Scripting` |
-| PowerShell           | .NET CLR + PSSDK       | ◎     | ×                            | `Microsoft.PowerShell.SDK`                |
-| F# Scripting         | .NET CLR               | ○     | ×                            | `FSharp.Compiler.Service`                 |
-| Lua（MoonSharp）     | Lua VM（純粋 C#）      | ×     | ×                            | `MoonSharp`                               |
+| 言語                  | 実行環境                      | 系統     | 既存 JS との互換性  | NuGet 依存                                        |
+| --------------------- | ----------------------------- | -------- | ------------------- | ------------------------------------------------- |
+| TypeScript            | V8（トランスパイル後）        | MS 系    | ◎（JS は有効な TS） | なし（ts.js のみ）                                |
+| Python（IronPython）  | IronPython DLR                | 非 MS 系 | ×                   | `IronPython` 3.4.x                                |
+| Ruby（MRuby）         | ネイティブ VM（P/Invoke）     | 非 MS 系 | ×                   | なし（手動ビルド）                                |
+| PHP（PeachPie）       | .NET CLR（PHP→IL コンパイル） | 非 MS 系 | ×                   | `Peachpie.Runtime` + `Peachpie.Compiler.Services` |
+| Lua（MoonSharp）      | Lua VM（純粋 C#）             | 非 MS 系 | ×                   | `MoonSharp`                                       |
+| C# Script             | .NET CLR                      | MS 系    | ×                   | `Microsoft.CodeAnalysis.CSharp.Scripting`         |
+| Groovy（IKVM.NET）    | JVM 模倣（IKVM）              | 非 MS 系 | ×                   | `IKVM` + Groovy jar                               |
+| Kotlin Script（IKVM） | JVM 模倣（IKVM）              | 非 MS 系 | ×                   | `IKVM` + Kotlin jar                               |
+| PowerShell            | .NET CLR + PSSDK              | MS 系    | ×                   | `Microsoft.PowerShell.SDK`                        |
+| F# Scripting          | .NET CLR                      | MS 系    | ×                   | `FSharp.Compiler.Service`                         |
 
 ### セキュリティ・サンドボックス
 
-| 言語                 | OS 操作の遮断 | 根拠の種類             | 実装コスト | 総合評価 |
-| -------------------- | ------------- | ---------------------- | ---------- | -------- |
-| TypeScript           | ◎             | 原理的保証（V8）       | 低         | ◎        |
-| Python（IronPython） | ○             | 実装的保証（4層）      | 高         | ○        |
-| C# Script            | △             | 構文木検査（不完全）   | 高         | △        |
-| PowerShell           | ×             | 不可（設計原則と矛盾） | -          | ×        |
-| F# Scripting         | △             | 構文木検査（不完全）   | 高         | △        |
-| Lua（MoonSharp）     | ◎             | 設計的保証（VM分離）   | 中         | ◎        |
+| 言語                  | OS 操作の遮断 | 根拠の種類                 | 実装コスト | 総合評価 |
+| --------------------- | ------------- | -------------------------- | ---------- | -------- |
+| TypeScript            | ◎             | 原理的保証（V8）           | 低         | ◎        |
+| Python（IronPython）  | ○             | 実装的保証（4 層）         | 高         | ○        |
+| Ruby（MRuby）         | ○             | 設計的保証（ビルド時除去） | 高         | △        |
+| Lua（MoonSharp）      | ◎             | 設計的保証（VM 分離）      | 中         | ◎        |
+| PHP（PeachPie）       | △             | .NET CLR 上（制限困難）    | 高         | △        |
+| C# Script             | △             | 構文木検査（不完全）       | 高         | △        |
+| Groovy（IKVM.NET）    | ×             | SecurityManager 廃止済み   | -          | ×        |
+| Kotlin Script（IKVM） | ×             | SecurityManager 廃止済み   | -          | ×        |
+| PowerShell            | ×             | 不可（設計原則と矛盾）     | -          | ×        |
+| F# Scripting          | △             | 構文木検査（不完全）       | 高         | △        |
 
 ### 実装コスト
 
-| 言語                 | ホスト注入の変更    | エンジン実装                         | UI 変更            | 総合コスト |
-| -------------------- | ------------------- | ------------------------------------ | ------------------ | ---------- |
-| TypeScript           | なし                | トランスパイラのみ                   | 最小（選択肢追加） | 低         |
-| Python（IronPython） | スコープ変数        | PythonScriptEngine 実装              | 言語選択追加       | 高         |
-| C# Script            | ScriptState Globals | CSharpScriptEngine + SyntaxTree 検査 | 言語選択追加       | 高         |
-| PowerShell           | PSVariable          | RunspacePool 管理                    | 言語選択追加       | 中         |
-| F# Scripting         | InteractiveChecker  | F#ScriptEngine + SyntaxTree 検査     | 言語選択追加       | 高         |
-| Lua（MoonSharp）     | Script.Globals      | LuaScriptEngine 実装                 | 言語選択追加       | 中         |
+| 言語                  | ホスト注入の変更      | エンジン実装                             | ネイティブ依存   | 総合コスト |
+| --------------------- | --------------------- | ---------------------------------------- | ---------------- | ---------- |
+| TypeScript            | なし                  | トランスパイラのみ                       | なし             | 低         |
+| Lua（MoonSharp）      | Script.Globals        | LuaScriptEngine 実装                     | なし             | 中         |
+| Python（IronPython）  | スコープ変数          | PythonScriptEngine 実装                  | なし             | 高         |
+| Ruby（MRuby）         | P/Invoke コールバック | MRubyScriptEngine + ネイティブラッパー   | あり（libmruby） | 高         |
+| PHP（PeachPie）       | Peachpie Context      | PeachpieScriptEngine + disable_functions | なし             | 高         |
+| C# Script             | ScriptState Globals   | CSharpScriptEngine + SyntaxTree 検査     | なし             | 高         |
+| Groovy（IKVM.NET）    | Binding               | IKVM + GroovyShell                       | なし（重量級）   | 非常に高   |
+| Kotlin Script（IKVM） | ScriptingEnvironment  | IKVM + KotlinScriptHost                  | なし（重量級）   | 非常に高   |
+| PowerShell            | PSVariable            | RunspacePool 管理                        | なし             | 中         |
+| F# Scripting          | InteractiveChecker    | F#ScriptEngine + SyntaxTree 検査         | なし             | 高         |
 
 ---
 
@@ -872,15 +1131,19 @@ using (var engine = new V8ScriptEngineWrapper(debug: debug))
 
 ### 採用推奨言語
 
-| 言語                 | 採用可否 | 理由                                                                     |
-| -------------------- | -------- | ------------------------------------------------------------------------ |
-| **TypeScript**       | **推奨** | 既存 V8 基盤の再利用、セキュリティ変更なし、MS 開発、型安全性、JS と互換 |
-| Python（IronPython） | 推奨済み | [002-ServerScript-Python対応.md](002-ServerScript-Python対応.md) を参照  |
-| C# Script            | 条件付き | [004-CSharpScript-Roslyn対応.md](004-CSharpScript-Roslyn対応.md) を参照  |
-| PowerShell           | 不可     | OS 操作遮断が原理的に困難                                                |
-| F# Scripting         | 低優先   | C# Script と同等のサンドボックス課題、ホスト API 連携の複雑さ            |
-| VBScript             | 不可     | .NET 10 非対応、Microsoft が廃止予告                                     |
-| Lua（MoonSharp）     | 参考     | MS 系でないが優秀なサンドボックス。将来の選択肢として記録                |
+| 言語                  | 採用可否   | 理由                                                                                             |
+| --------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| **TypeScript**        | **推奨**   | 既存 V8 基盤の再利用、セキュリティ変更なし、型安全性、JS と互換                                  |
+| **Lua（MoonSharp）**  | **中優先** | 優秀なサンドボックス（VM 分離）、軽量（約 1 MB）、純粋 C# 実装                                   |
+| Python（IronPython）  | 推奨済み   | [002-ServerScript-Python対応.md](002-ServerScript-Python対応.md) を参照                          |
+| C# Script             | 条件付き   | [004-CSharpScript-Roslyn対応.md](004-CSharpScript-Roslyn対応.md) を参照                          |
+| Ruby（MRuby）         | 低優先     | 公式 NuGet なし・ネイティブ DLL 依存・実装コスト高。MRuby の .NET ラッパーが成熟した場合に再評価 |
+| PHP（PeachPie）       | 不推奨     | セキュリティ課題（C# Script 相当）、プロジェクト活動停滞                                         |
+| Groovy（IKVM.NET）    | 不可       | SecurityManager 廃止によりサンドボックス実現困難・依存サイズ大                                   |
+| Kotlin Script（IKVM） | 不可       | Groovy と同様の問題。TypeScript の代替としては不適                                               |
+| PowerShell            | 不可       | OS 操作遮断が原理的に困難                                                                        |
+| F# Scripting          | 低優先     | C# Script と同等のサンドボックス課題、ホスト API 連携の複雑さ                                    |
+| VBScript              | 不可       | .NET 10 非対応、Microsoft が廃止予告                                                             |
 
 ### 実装優先度
 
@@ -889,20 +1152,26 @@ flowchart LR
     P1["Phase 1\nIScriptEngine 抽象化\n（Python 対応の基盤整備）"]
     P2["Phase 2\nTypeScript 対応\n（トランスパイラ追加）"]
     P3["Phase 3\nPython 対応\n（IronPython 統合）"]
-    P4["Phase 4\n将来検討\n（Lua 等）"]
+    P4["Phase 4\nLua 対応\n（MoonSharp 統合）"]
+    P5["Phase 5\n将来検討\n（MRuby 等）"]
 
-    P1 --> P2 --> P3 --> P4
+    P1 --> P2 --> P3 --> P4 --> P5
 ```
 
 TypeScript は IScriptEngine 抽象化（Phase 1）さえ完了すれば、**新規エンジン実装なし**で追加できる。  
 追加コストが最も小さく、セキュリティリスクもゼロであるため、Python 対応と並行して、  
 あるいは Python より先に着手することを推奨する。
 
-| フェーズ              | 対象                 | 追加依存         | セキュリティリスク      |
-| --------------------- | -------------------- | ---------------- | ----------------------- |
-| Phase 1（既存基盤）   | IScriptEngine 抽象化 | なし             | なし                    |
-| Phase 2（TypeScript） | トランスパイラ追加   | typescript.js    | なし（V8 と同等）       |
-| Phase 3（Python）     | IronPython 統合      | IronPython NuGet | 中（4層サンドボックス） |
+Lua（MoonSharp）は Python より軽量かつサンドボックスが堅固であり、  
+Phase 4 での追加を検討する価値がある。
+
+| フェーズ              | 対象                 | 追加依存                | セキュリティリスク       |
+| --------------------- | -------------------- | ----------------------- | ------------------------ |
+| Phase 1（既存基盤）   | IScriptEngine 抽象化 | なし                    | なし                     |
+| Phase 2（TypeScript） | トランスパイラ追加   | typescript.js           | なし（V8 と同等）        |
+| Phase 3（Python）     | IronPython 統合      | IronPython NuGet        | 中（4 層サンドボックス） |
+| Phase 4（Lua）        | MoonSharp 統合       | MoonSharp NuGet（1 MB） | 低（VM 分離）            |
+| Phase 5（将来）       | MRuby 等             | ネイティブ DLL          | 要評価                   |
 
 ---
 
@@ -927,5 +1196,8 @@ TypeScript は IScriptEngine 抽象化（Phase 1）さえ完了すれば、**新
 
 - [TypeScript GitHub（Microsoft/TypeScript）](https://github.com/microsoft/TypeScript) — TypeScript コンパイラの公式リポジトリ
 - [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API)
-- [MoonSharp GitHub](https://github.com/moonsharp-devs/moonsharp) — .NET 向け Lua 実装（参考）
+- [MoonSharp GitHub](https://github.com/moonsharp-devs/moonsharp) — .NET 向け Lua 実装
+- [MRuby GitHub](https://github.com/mruby/mruby) — 組み込み向け軽量 Ruby
+- [PeachPie GitHub](https://github.com/peachpiecompiler/peachpie) — PHP to .NET コンパイラ
+- [IKVM.NET GitHub](https://github.com/ikvmnet/ikvm) — JVM バイトコード to .NET 変換ツール
 - [Microsoft.ClearScript GitHub](https://github.com/microsoft/ClearScript) — ClearScript（V8 ラッパー）

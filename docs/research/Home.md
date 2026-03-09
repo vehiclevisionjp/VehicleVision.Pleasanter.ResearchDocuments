@@ -137,17 +137,18 @@
 
 ### 10. ServerScript
 
-| #   | ドキュメント                                                                                                                            | 説明                                                                 | 調査日     |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ---------- |
-| 001 | [ServerScript 実装](10-ServerScript/001-ServerScript実装.md)                                                                            | ClearScript V8 統合・スクリプト実行フロー・ホストオブジェクト一覧    | 2026-02-23 |
-| 002 | [ServerScript Python 対応の実現可能性調査](10-ServerScript/002-ServerScript-Python対応.md)                                              | Python エンジン選定・SiteId 単位切替設計・実装方針                   | 2026-02-23 |
-| 003 | [IronPython 3 サンドボックス実装ガイド](10-ServerScript/003-IronPythonサンドボックス.md)                                                | IronPython 3 の OS 操作ブロック・多層防御・.NET interop 制御         | 2026-02-23 |
-| 004 | [C# Script（Roslyn Scripting API）対応の実現可能性調査](10-ServerScript/004-CSharpScript-Roslyn対応.md)                                 | Roslyn Scripting API のサンドボックス可否・V8/IronPython 比較        | 2026-02-23 |
-| 005 | [ServerScript Sites 対応](10-ServerScript/005-ServerScript-Sites対応.md)                                                                | サーバースクリプトの実行可能箇所を Sites に拡大するための調査        | 2026-02-26 |
-| 006 | [ServerScript ビュー別スタイル設定](10-ServerScript/006-ServerScriptビュー別スタイル設定.md)                                            | カレンダー・クロス集計等のビュー別スタイル設定の拡張方針             | 2026-02-26 |
-| 007 | [拡張サーバスクリプトの Action・Controller 制御](10-ServerScript/007-拡張サーバスクリプトAction・Controller制御.md)                     | 拡張サーバスクリプトの Controller/Action フィルタリング仕様と注意点  | 2026-03-02 |
-| 008 | [バックグラウンドタスクでの C# DLL/EXE 実行](10-ServerScript/008-バックグラウンドタスクでのCSharp-DLL実行.md)                           | バックグラウンドサーバスクリプト流用による C# DLL/EXE 実行方式の調査 | 2026-03-02 |
-| 009 | [バックグラウンドサーバスクリプトの cron 式スケジュール対応](10-ServerScript/009-バックグラウンドサーバスクリプトcron式スケジュール.md) | cron 式入力・リアルタイムプレビュー・バリデーション設計              | 2026-03-02 |
+| #   | ドキュメント                                                                                                                            | 説明                                                                   | 調査日     |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------- |
+| 001 | [ServerScript 実装](10-ServerScript/001-ServerScript実装.md)                                                                            | ClearScript V8 統合・スクリプト実行フロー・ホストオブジェクト一覧      | 2026-02-23 |
+| 002 | [ServerScript Python 対応の実現可能性調査](10-ServerScript/002-ServerScript-Python対応.md)                                              | Python エンジン選定・SiteId 単位切替設計・実装方針                     | 2026-02-23 |
+| 003 | [IronPython 3 サンドボックス実装ガイド](10-ServerScript/003-IronPythonサンドボックス.md)                                                | IronPython 3 の OS 操作ブロック・多層防御・.NET interop 制御           | 2026-02-23 |
+| 004 | [C# Script（Roslyn Scripting API）対応の実現可能性調査](10-ServerScript/004-CSharpScript-Roslyn対応.md)                                 | Roslyn Scripting API のサンドボックス可否・V8/IronPython 比較          | 2026-02-23 |
+| 005 | [ServerScript Sites 対応](10-ServerScript/005-ServerScript-Sites対応.md)                                                                | サーバースクリプトの実行可能箇所を Sites に拡大するための調査          | 2026-02-26 |
+| 006 | [ServerScript ビュー別スタイル設定](10-ServerScript/006-ServerScriptビュー別スタイル設定.md)                                            | カレンダー・クロス集計等のビュー別スタイル設定の拡張方針               | 2026-02-26 |
+| 007 | [拡張サーバスクリプトの Action・Controller 制御](10-ServerScript/007-拡張サーバスクリプトAction・Controller制御.md)                     | 拡張サーバスクリプトの Controller/Action フィルタリング仕様と注意点    | 2026-03-02 |
+| 008 | [バックグラウンドタスクでの C# DLL/EXE 実行](10-ServerScript/008-バックグラウンドタスクでのCSharp-DLL実行.md)                           | バックグラウンドサーバスクリプト流用による C# DLL/EXE 実行方式の調査   | 2026-03-02 |
+| 009 | [バックグラウンドサーバスクリプトの cron 式スケジュール対応](10-ServerScript/009-バックグラウンドサーバスクリプトcron式スケジュール.md) | cron 式入力・リアルタイムプレビュー・バリデーション設計                | 2026-03-02 |
+| 010 | [サーバスクリプト 項目プロパティ変更不可一覧と実装方針](10-ServerScript/010-ServerScript-項目プロパティ変更不可一覧と実装方針.md)       | columns オブジェクトで変更できないプロパティ一覧と正規表現等の実装方針 | 2026-03-09 |
 
 ### 11. CodeDefiner
 

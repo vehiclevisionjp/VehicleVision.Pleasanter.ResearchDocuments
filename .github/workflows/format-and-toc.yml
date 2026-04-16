@@ -7,6 +7,10 @@ on:
     paths:
       - 'docs/**/*.md'
       - '*.md'
+  pull_request:
+    paths:
+      - 'docs/**/*.md'
+      - '*.md'
   workflow_dispatch: # 手動実行も可能
 
 jobs:
@@ -18,7 +22,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Setup Node.js

@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "yaml": "^2.8.2",
-    "doctoc": "^2.2.1",
+    "doctoc": "^2.4.1",
     "glob": "^13.0.6",
     "markdownlint": "^0.40.0",
     "markdownlint-cli2": "^0.20.0",

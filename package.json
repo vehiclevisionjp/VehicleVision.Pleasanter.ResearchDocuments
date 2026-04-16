@@ -19,11 +19,11 @@
     "pdf": "npm run preinstall:check && node docs/script/generate-pdf.js"
   },
   "devDependencies": {
-    "yaml": "^2.8.2",
+    "yaml": "^2.8.3",
     "doctoc": "^2.4.1",
     "glob": "^13.0.6",
     "markdownlint": "^0.40.0",
-    "markdownlint-cli2": "^0.20.0",
+    "markdownlint-cli2": "^0.22.0",
     "md-to-pdf": "^5.2.4",
     "prettier": "^3.8.3"
   }

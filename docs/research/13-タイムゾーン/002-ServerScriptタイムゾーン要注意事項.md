@@ -26,7 +26,7 @@ Pleasanter 全体のタイムゾーン設計については [012-タイムゾー
     - [組み込み日付項目（StartTime 等）の書き戻し](#組み込み日付項目starttime-等の書き戻し)
     - [拡張日付カラム（DateA 等）の書き戻し](#拡張日付カラムdatea-等の書き戻し)
     - [BaseModel.SetValue()](#basemodelsetvalue)
-- [API モデルパス（model.Body.\*）](#api-モデルパスmodelbody\)
+- [API モデルパス（model.Body.\*）](#api-モデルパスmodelbody)
     - [ServerScriptModelApiModel.TrySetMember](#serverscriptmodelapimodeltrysetmember)
 - [書き戻しフロー比較](#書き戻しフロー比較)
     - [組み込み日付項目（StartTime 等）](#組み込み日付項目starttime-等)

@@ -1,3 +1,7 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 <!-- markdownlint-disable MD013 MD041 -->
 
 **Copyright {{YEAR}} PMC Co., Ltd.** | [ライセンス]({{REPO_URL}}/blob/main/LICENSE.md) 非商用: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.ja) / 商用: [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/deed.ja)

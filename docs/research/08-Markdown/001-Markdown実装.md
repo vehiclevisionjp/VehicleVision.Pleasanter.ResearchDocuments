@@ -216,8 +216,7 @@ public static HtmlBuilder MarkDown(
 <markdown-field>
     <textarea id="Body" class="control-markdown upload-image" data-viewer-type="auto" data-enablelightbox="1">
     (Markdownテキスト)
-  </textarea
-    >
+  </textarea>
 </markdown-field>
 ```
 

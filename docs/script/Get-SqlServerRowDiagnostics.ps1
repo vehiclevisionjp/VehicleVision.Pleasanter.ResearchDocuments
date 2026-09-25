@@ -27,6 +27,8 @@ NOT physical row bytes or LOB/overflow pointers. Only stored variable string/bin
 columns are measured. Per-column averages exclude NULL; row sums treat NULL as zero.
 The row maximum is a maximum of sums from individual rows, not a sum of maxima.
 Empty sets have RowCount 0 and NULL totals, averages and maxima.
+Both sample and full payload scans include only rows visible to the current login;
+row-level security may filter rows, while allocation statistics may include more.
 Payload statistics are unavailable when a selected variable column is encrypted or
 dynamically masked, even with UNMASK permission; masking can alter derived lengths.
 
@@ -347,6 +349,11 @@ ORDER BY partition_number;
       $payloadFailureReason = 'Payload statistics unavailable: dynamic data masking is not supported, even with UNMASK permission, because derived lengths can be masked.'
       throw 'Masked variable columns are not supported.'
     }
+    if (@($columns | Where-Object { $_.IsMasked }).Count -and
+      @($payloadColumns | Where-Object { $_.IsComputed -and $_.IsPersisted }).Count) {
+      $payloadFailureReason = 'Payload statistics unavailable: persisted computed variable columns may inherit dynamic data masking from another masked column; inherited masking is not supported, even with UNMASK permission.'
+      throw 'Potential inherited masking in persisted computed variable columns.'
+    }
     if (@($payloadColumns | Where-Object { $null -ne $_.EncryptionType }).Count) {
       $payloadFailureReason = 'Payload statistics unavailable: encrypted variable columns are not supported.'
       throw 'Encrypted variable columns are not supported.'
@@ -380,7 +387,7 @@ ORDER BY partition_number;
       AverageRowPayloadBytes = $row.AverageRowPayloadBytes
       MaxRowPayloadBytes = $row.MaxRowPayloadBytes
       Columns = $columnStats
-      Scope = 'Stored variable strings/binary only; DATALENGTH includes off-row bytes, not physical row storage. Per-column averages exclude NULL; row sums treat NULL as zero. TOP is unordered, not representative.'
+      Scope = 'Stored variable strings/binary and rows visible to the current login only; row-level security may filter even a FullScan. Allocation statistics may include more rows. DATALENGTH includes off-row bytes, not physical row storage. Per-column averages exclude NULL; row sums treat NULL as zero. TOP is unordered, not representative.'
     })
   }
   catch {

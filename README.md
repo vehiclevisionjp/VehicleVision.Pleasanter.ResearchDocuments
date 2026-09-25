@@ -14,6 +14,7 @@
     - [Markdownの構文チェック](#markdownの構文チェック)
     - [PDF生成](#pdf生成)
     - [SQL Serverの行サイズ簡易計算](#sql-serverの行サイズ簡易計算)
+    - [SQL Serverの現状診断](#sql-serverの現状診断)
 - [関連リポジトリ](#関連リポジトリ)
 - [ライセンス](#ライセンス)
 
@@ -86,7 +87,7 @@ npm run pdf
 ### SQL Serverの行サイズ簡易計算
 
 PowerShell 7以降で、項目数と想定データ量から**1行の固定長・可変長・管理領域と、8,060バイトまでの余裕**を計算できます。
-DBへの接続・変更は行いません。通常のディスクベース・非圧縮テーブルを対象とし、
+この手入力スクリプトはDBへの接続・変更を行いません。通常のディスクベース・非圧縮テーブルを対象とし、
 **可変長データをすべて行内に置いた場合の概算**です。行外化後のサイズや保存可否を自動判定するツールではありません。
 
 リポジトリのルートで実行します。
@@ -169,6 +170,108 @@ NULL・空文字列・`[]`は区別し、`[]`はnvarcharで4バイトの非NULL�
 参考：[ROW_OVERFLOW](https://learn.microsoft.com/en-us/sql/relational-databases/pages-and-extents-architecture-guide#large-row-support)、
 [nvarcharとmax列の注意事項](https://learn.microsoft.com/en-us/sql/t-sql/data-types/nchar-and-nvarchar-transact-sql)、
 [decimalの格納サイズ](https://learn.microsoft.com/en-us/sql/t-sql/data-types/decimal-and-numeric-transact-sql)。
+
+### SQL Serverの現状診断
+
+手入力の代わりに、PowerShell 7以降の`Get-SqlServerRowDiagnostics.ps1`で、SQL Server 2016以降を対象に
+**実DBの列定義・保存データ量・行外領域の使用状況**を確認できます。
+既存の簡易計算とは別のスクリプトです。SQL Serverへの問い合わせは読み取りのみで、
+テーブル変更や設定変更は行いません。取得結果に業務データ本文は出力しません。
+
+リポジトリのルートで、接続先・DB・対象の物理テーブルを指定します。
+
+```powershell
+$report = & "$PWD/docs/script/Get-SqlServerRowDiagnostics.ps1" `
+  -Server "sqlserver.example.local" -Database "Pleasanter" `
+  -Schema "dbo" -Table "Results" -IncludeRelated
+$report | ConvertTo-Json -Depth 8
+```
+
+SQL Server認証を使用する場合は、パスワードをコマンドに直書きせず対話入力します。
+
+```powershell
+$credential = Get-Credential
+$report = & "$PWD/docs/script/Get-SqlServerRowDiagnostics.ps1" `
+  -Server "sqlserver.example.local" -Database "Pleasanter" `
+  -Table "Issues" -Credential $credential
+$report | ConvertTo-Json -Depth 8
+```
+
+| 引数                            | 内容                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------- |
+| `Server` / `Database` / `Table` | 必須。接続先、DB名、物理テーブル名。`Table`にはスキーマを含めない                           |
+| `Schema`                        | スキーマ名。初期値`dbo`                                                                     |
+| `Credential`                    | SQL Server認証用の`PSCredential`。省略時は統合認証。Windows以外では統合認証の事前設定が必要 |
+| `IncludeRelated`                | 指定テーブルと同じスキーマの`_history`・`_deleted`も個別に診断                              |
+| `SampleRows`                    | 軽量確認の取得行数上限。初期値1,000、指定範囲1～100,000                                     |
+| `Detailed`                      | データの全行集計と、物理レコードサイズ統計の詳細取得を行う                                  |
+| `CommandTimeout`                | 各問い合わせのタイムアウト秒数。初期値30、指定範囲1～600                                    |
+
+接続は暗号化し、サーバー証明書を検証します。サーバー名と証明書が一致し、
+実行端末で証明書チェーンを信頼できる状態にしてください。検証を無効化するオプションはありません。
+接続タイムアウトは15秒です。既存の.NET SQLクライアントを使用し、追加PowerShellモジュールは不要です。
+
+**軽量確認と詳細確認**
+
+| 内容                                              | 通常実行（軽量）   | `-Detailed`                                        |
+| ------------------------------------------------- | ------------------ | -------------------------------------------------- |
+| 列定義・固定長／管理領域の概算                    | 取得               | 取得                                               |
+| 行数の概数、IN_ROW／ROW_OVERFLOW／LOBの使用ページ | DMVから取得        | DMVから取得                                        |
+| 可変長データの`DATALENGTH`集計                    | 最大`SampleRows`行 | 全行                                               |
+| 物理レコードサイズの統計                          | 取得しない         | `sys.dm_db_index_physical_stats`の`DETAILED`で取得 |
+
+通常実行の抽出はランダムサンプルではありません。サンプル外の長いデータを見落とすため、
+サンプルの最大値をテーブル全体の最大値として扱わないでください。
+行数の上限は読み取りバイト数・I/Oの上限ではなく、大きいLOBを持つ行では軽量確認でも負荷がかかります。
+詳細確認は全行・物理ページを走査するため、まず検証環境で実行し、本番では低負荷時間帯に限定してください。
+読み取りでもロック待ちや、可用性グループのセカンダリでREDOを妨げる可能性があります。
+
+**結果の読み方**
+
+テーブルごとに1つのオブジェクトを返します。各セクションは`Status`・`Reason`・`Data`を持ち、
+`Columns`のみ列定義の配列です。
+
+| 出力                   | 確認する内容                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `Metadata` / `Columns` | テーブルの格納形式、各列の実型・長さ・精度・NULL可否等                         |
+| `Budget`               | 列定義から求めた固定長・管理領域。可変長の宣言最大長まで行内に置く仮定の概算   |
+| `Allocation`           | パーティション別と合計の行数概数、行内・ROW_OVERFLOW・LOBの使用ページ数        |
+| `Payload`              | 対象行数、行ごとの可変長データ合計の平均・最大、列ごとの非NULL件数・平均・最大 |
+| `PhysicalStats`        | 詳細確認時のパーティション別の物理レコード件数と最小・平均・最大サイズ         |
+
+- 実際の型・精度と格納対象列から固定長部分と管理領域を算出します。
+  通常の行形式で計算できない型・圧縮等では、概算を不明として理由を示します。
+- `nvarchar(max)`等があっても、通常の行形式なら固定長・管理領域は表示します。
+  可変長全体の宣言最大長が確定しないため、この場合の`Budget.Status`は`Partial`、
+  合計サイズ・残りバイト数・収まるかの判定は未確定です。
+  固定長と管理領域だけの値には、可変長データや行外参照を一切含めません。
+- 行外領域はヒープ／クラスタ化インデックスを対象とし、非クラスタ化インデックス分は合算しません。
+  使用ページが正ならその領域の使用が確認できますが、行外化した列・行の特定や正確な件数を示す値ではありません。
+- `DATALENGTH`は行外部分も含む保存データ量であり、行内占有量ではありません。
+  添付項目の保存JSONは対象ですが、別テーブルやファイルストレージの添付本体は含みません。
+  計測対象は格納される可変長文字列・バイナリ列です。行合計ではNULLを0とし、列ごとの平均ではNULLを除外します。
+  行の最大値は同一行の合計から算出し、各列の最大値を足した値とは区別します。
+- 詳細確認の物理統計はパーティション別の結果として確認します。
+  格納済みレコードの大きさであって、将来の入力やソート時の作業領域を保証するものではありません。
+- 権限不足・タイムアウト等は「取得不可」として扱い、0バイトや行外格納なしとは判定しません。
+  指定テーブルが見えない場合はエラー、任意の履歴・削除テーブルが見えない場合は警告になります。
+- 空テーブルはデータの最大値・平均値が未定義です。軽量モードの物理統計も未取得として区別します。
+
+**必要な権限と制約**
+
+対象テーブルの`SELECT`と列定義の参照権限が必要です。DMVには別途参照権限が必要で、
+`sys.dm_db_partition_stats`はSQL Server 2019以前では`VIEW DATABASE STATE`と`VIEW DEFINITION`、
+SQL Server 2022以降では`VIEW DATABASE PERFORMANCE STATE`と`VIEW SECURITY DEFINITION`を要求します。
+物理統計の必要権限はSQL Serverのバージョン・対象範囲によって異なります。
+DB管理者に必要最小限の権限を確認し、管理者権限や書き込み権限を安易に付与しないでください。
+
+問い合わせは一括したスナップショットではないため、更新中のDBでは各結果の取得時点が異なります。
+列削除後の物理領域、行バージョン情報等は列定義ベースの概算に反映されない場合があります。
+**「現状を確認する」診断であり、「あと何項目まで安全に追加できるか」を保証するものではありません。**
+項目拡張前には最大入力時と登録・更新・履歴・削除・復元・一覧ソート等の動作も検証してください。
+
+参考：[パーティション使用状況と権限](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-db-partition-stats-transact-sql)、
+[物理レコード統計と負荷・権限](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-db-index-physical-stats-transact-sql)。
 
 ## 関連リポジトリ
 

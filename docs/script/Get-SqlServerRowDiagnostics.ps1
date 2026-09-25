@@ -27,6 +27,8 @@ NOT physical row bytes or LOB/overflow pointers. Only stored variable string/bin
 columns are measured. Per-column averages exclude NULL; row sums treat NULL as zero.
 The row maximum is a maximum of sums from individual rows, not a sum of maxima.
 Empty sets have RowCount 0 and NULL totals, averages and maxima.
+Payload statistics are unavailable when a selected variable column is encrypted or
+dynamically masked, even with UNMASK permission; masking can alter derived lengths.
 
 Detailed removes the sample limit and requests DETAILED physical statistics for
 the base heap/clustered index. It can be expensive and can block or be blocked.
@@ -278,12 +280,13 @@ SELECT c.column_id AS ColumnId, c.name AS Name, ts.name AS TypeSchema,
   CONVERT(bit, COALESCE(cc.is_persisted, 0)) AS IsPersisted,
   c.is_sparse AS IsSparse, c.is_column_set AS IsColumnSet,
   c.is_filestream AS IsFileStream, c.encryption_type AS EncryptionType,
-  c.is_hidden AS IsHidden
+  c.is_hidden AS IsHidden, CONVERT(bit, COALESCE(mc.is_masked, 0)) AS IsMasked
 FROM sys.columns c
 JOIN sys.types ut ON ut.user_type_id = c.user_type_id
 JOIN sys.schemas ts ON ts.schema_id = ut.schema_id
 LEFT JOIN sys.types bt ON bt.user_type_id = c.system_type_id AND bt.system_type_id = bt.user_type_id
 LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
+LEFT JOIN sys.masked_columns mc ON mc.object_id = c.object_id AND mc.column_id = c.column_id
 WHERE c.object_id = @ObjectId
 ORDER BY c.column_id;
 '@
@@ -338,8 +341,14 @@ ORDER BY partition_number;
     (-not $_.IsComputed -or $_.IsPersisted) -and
     $_.BaseType -in 'varchar', 'nvarchar', 'varbinary', 'text', 'ntext', 'image'
   })
+  $payloadFailureReason = 'Payload statistics unavailable (permission, timeout, or query failure).'
   try {
+    if (@($payloadColumns | Where-Object { $_.IsMasked }).Count) {
+      $payloadFailureReason = 'Payload statistics unavailable: dynamic data masking is not supported, even with UNMASK permission, because derived lengths can be masked.'
+      throw 'Masked variable columns are not supported.'
+    }
     if (@($payloadColumns | Where-Object { $null -ne $_.EncryptionType }).Count) {
+      $payloadFailureReason = 'Payload statistics unavailable: encrypted variable columns are not supported.'
       throw 'Encrypted variable columns are not supported.'
     }
     $payloadSql = New-PayloadQuery $qualifiedName $payloadColumns ([bool]$Detailed)
@@ -375,7 +384,7 @@ ORDER BY partition_number;
     })
   }
   catch {
-    $payload = New-DiagnosticSection -Status Unavailable -Reason 'Payload statistics unavailable (permission, timeout, encrypted columns, or query failure).'
+    $payload = New-DiagnosticSection -Status Unavailable -Reason $payloadFailureReason
     Write-Warning "$qualifiedName payload statistics unavailable."
   }
   $physical = New-DiagnosticSection -Status NotRequested -Reason 'Use -Detailed to request the expensive physical statistics scan.'
